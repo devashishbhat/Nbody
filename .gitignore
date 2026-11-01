@@ -4,9 +4,7 @@ node_modules/
 
 # build output
 dist/
-target/
 *.tsbuildinfo
-crates/nbody-wasm/pkg/
 
 # test + tooling output
 coverage/

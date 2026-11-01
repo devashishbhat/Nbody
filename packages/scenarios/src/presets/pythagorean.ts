@@ -23,7 +23,7 @@ export const pythagorean = defineScenario({
   watchFor: 'After a long scramble, one body is thrown out and the other two pair off.',
   units: 'natural',
   dt: 1e-4,
-  integrator: 'bulirsch-stoer',
+  integrator: 'dopri5',
   forceModel: 'direct',
   softening: 0,
   timeScale: 2,

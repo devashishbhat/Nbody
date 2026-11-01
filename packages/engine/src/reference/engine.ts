@@ -9,21 +9,28 @@ import {
   type Scenario,
   type ScenarioSettings,
 } from '@nbody/protocol';
+import { BarnesHutTree } from './barnes-hut.ts';
 import { resolveMerges } from './collisions.ts';
 import { computeDiagnostics, emptyDiagnostics, type Diagnostics } from './diagnostics.ts';
-import { computeAccelerations, stepLeapfrog, stepYoshida4 } from './integrators.ts';
+import { Dopri5 } from './dopri5.ts';
+import { computeAccelerations, type ForceField } from './forces.ts';
+import { stepLeapfrog, stepYoshida4 } from './integrators.ts';
 import { RefState } from './state.ts';
 
 /**
- * The TypeScript reference engine.
+ * The simulation engine.
  *
- * Direct summation and symplectic integration only. It has no octree and no
- * adaptive integrator, so `forceModel`, `theta` and `bulirsch-stoer` are
- * carried for snapshot fidelity but do not change its behaviour. The Rust core
- * is the authority on all three; this engine's job is to be obviously correct,
- * so that any disagreement between the two is a bug in the fast one.
+ * Owns the state, the force model and the integrator, and is the only thing
+ * that mutates any of them. It implements `ForceField` itself so that the
+ * choice between direct summation and Barnes-Hut is made here, once, instead
+ * of being threaded through every integrator.
+ *
+ * Force model selection follows `resolveForceModel`: direct summation below
+ * AUTO_BARNES_HUT_THRESHOLD bodies, the octree above it. Direct summation is
+ * exact and cheaper at small N; the tree only pays off once N^2 stops fitting
+ * in a frame.
  */
-export class ReferenceEngine {
+export class ReferenceEngine implements ForceField {
   readonly state = new RefState();
 
   settings: ScenarioSettings = {
@@ -52,10 +59,31 @@ export class ReferenceEngine {
   private diagnostics: Diagnostics = emptyDiagnostics();
   private pendingFlags = 0;
   private sequence = 0;
-  private unsupportedIntegratorReported = false;
 
-  /** Set when an unsupported setting was silently approximated. */
+  private readonly tree = new BarnesHutTree();
+  private readonly adaptive = new Dopri5();
+
+  /** Force evaluations since the last publish, for the cost readout. */
+  forceEvaluations = 0;
+
+  /** Set when the engine needs to tell the user something non-fatal. */
   warning: string | null = null;
+
+  /**
+   * Accelerations for the current positions.
+   *
+   * This is the ForceField the integrators call. Dispatching here keeps every
+   * integrator ignorant of which model is in use.
+   */
+  compute(state: RefState): void {
+    this.forceEvaluations++;
+    const { G, softening, theta } = this.settings;
+    if (resolveForceModel(this.settings.forceModel, state.count) === 'barnes-hut') {
+      this.tree.accelerations(state, G, softening, theta);
+    } else {
+      computeAccelerations(state, G, softening);
+    }
+  }
 
   load(scenario: Scenario): void {
     this.template = scenario;
@@ -73,7 +101,7 @@ export class ReferenceEngine {
     this.simTime = 0;
     this.stepCount = 0;
     this.diverged = false;
-    this.unsupportedIntegratorReported = false;
+    this.adaptive.restart();
     this.pendingFlags = FrameFlags.TopologyChanged;
     this.refreshForces();
     const initial = this.measure();
@@ -97,34 +125,47 @@ export class ReferenceEngine {
 
   /** Recomputes accelerations, restoring the integrators' entry invariant. */
   refreshForces(): void {
-    computeAccelerations(this.state, this.settings.G, this.settings.softening);
+    this.compute(this.state);
   }
 
-  step(): void {
-    if (this.diverged) return;
-    const { G, softening, dt, integrator, collisions } = this.settings;
+  /**
+   * Advances one step and returns the simulation time actually elapsed.
+   *
+   * Fixed-step integrators always return `settings.dt`. The adaptive one
+   * returns whatever it accepted, which is at most `|dt|` and may be far less
+   * through a close encounter, so callers must use the return value rather
+   * than assuming `dt`.
+   */
+  step(): number {
+    if (this.diverged) return 0;
+    const { dt, integrator, collisions } = this.settings;
 
-    if (integrator === 'bulirsch-stoer') {
-      if (!this.unsupportedIntegratorReported) {
-        this.unsupportedIntegratorReported = true;
-        this.warning =
-          'The reference engine has no adaptive integrator. Using yoshida4 instead. ' +
-          'Close encounters will be less accurate than the Rust engine.';
-      }
-      stepYoshida4(this.state, G, softening, dt);
+    let advanced: number;
+    if (integrator === 'dopri5') {
+      advanced = this.adaptive.step(this.state, this, dt);
+      // The adaptive integrator leaves accelerations evaluated at its last
+      // internal stage, not at the accepted state, so the entry invariant the
+      // symplectic integrators rely on has to be restored in case the user
+      // switches integrator next step.
+      this.refreshForces();
     } else if (integrator === 'yoshida4') {
-      stepYoshida4(this.state, G, softening, dt);
+      stepYoshida4(this.state, this, dt);
+      advanced = dt;
     } else {
-      stepLeapfrog(this.state, G, softening, dt);
+      stepLeapfrog(this.state, this, dt);
+      advanced = dt;
     }
 
-    this.simTime += dt;
+    this.simTime += advanced;
     this.stepCount++;
 
     if (collisions === 'merge' && resolveMerges(this.state) > 0) {
       this.pendingFlags |= FrameFlags.Collided | FrameFlags.TopologyChanged;
       this.refreshForces();
+      this.adaptive.restart();
     }
+
+    return advanced;
   }
 
   measure(): Diagnostics {
@@ -168,6 +209,7 @@ export class ReferenceEngine {
     this.state.push(body);
     this.pendingFlags |= FrameFlags.TopologyChanged;
     this.refreshForces();
+    this.adaptive.restart();
   }
 
   removeBody(id: string): void {
@@ -176,11 +218,25 @@ export class ReferenceEngine {
     this.state.removeAt(i);
     this.pendingFlags |= FrameFlags.TopologyChanged;
     this.refreshForces();
+    this.adaptive.restart();
   }
 
   applySettings(patch: Partial<ScenarioSettings>): void {
     const before = this.settings;
     this.settings = { ...before, ...patch };
+    // A carried step size is only valid for the dynamics it was measured
+    // against, so anything that changes the force field or the step bound
+    // discards it.
+    if (
+      patch.G !== undefined ||
+      patch.softening !== undefined ||
+      patch.dt !== undefined ||
+      patch.integrator !== undefined ||
+      patch.forceModel !== undefined ||
+      patch.theta !== undefined
+    ) {
+      this.adaptive.restart();
+    }
     if (patch.G !== undefined || patch.softening !== undefined) {
       this.refreshForces();
       // The conserved quantity itself changed, so the drift baseline has to
@@ -207,6 +263,17 @@ export class ReferenceEngine {
   /** Model actually in use, with `auto` resolved against the live body count. */
   activeForceModel(): 'direct' | 'barnes-hut' {
     return resolveForceModel(this.settings.forceModel, this.state.count);
+  }
+
+  /** Octree nodes in the most recent tree, or 0 under direct summation. */
+  treeNodes(): number {
+    return this.activeForceModel() === 'barnes-hut' ? this.tree.nodes : 0;
+  }
+
+  /** Steps the adaptive controller rejected, as a fraction of those tried. */
+  rejectionRate(): number {
+    const total = this.adaptive.accepted + this.adaptive.rejected;
+    return total === 0 ? 0 : this.adaptive.rejected / total;
   }
 
   /**

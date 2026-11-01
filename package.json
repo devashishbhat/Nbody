@@ -11,18 +11,15 @@
     "dev": "pnpm --filter @nbody/web dev",
     "build": "pnpm --filter @nbody/web build",
     "preview": "pnpm --filter @nbody/web preview",
-    "build:wasm": "cd crates/nbody-wasm && RUSTFLAGS=\"-C target-feature=+simd128\" wasm-pack build --release --target web --out-dir pkg",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:rust": "cargo test --workspace",
-    "bench:rust": "cargo bench --workspace",
     "lint": "eslint .",
-    "lint:rust": "cargo clippy --workspace --all-targets -- -D warnings",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "bench": "pnpm --filter @nbody/tool-bench bench"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

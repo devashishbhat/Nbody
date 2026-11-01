@@ -1,6 +1,19 @@
 import type { RefState } from './state.ts';
 
 /**
+ * A source of accelerations.
+ *
+ * Integrators take one of these rather than calling a force function
+ * directly, so that the choice between direct summation and Barnes-Hut is
+ * made once by the engine instead of being threaded through every integrator.
+ * Implementations write into `state.ax/ay/az` and must not allocate: this is
+ * called up to seven times per step and thousands of times per frame.
+ */
+export interface ForceField {
+  compute(state: RefState): void;
+}
+
+/**
  * Direct O(N^2) summation with Plummer softening.
  *
  * The inner loop exploits pair symmetry, so each pair is visited once and its

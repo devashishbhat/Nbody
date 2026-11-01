@@ -118,12 +118,17 @@ function advance(wallDeltaMs: number): void {
   const budgetStart = performance.now();
   let steps = 0;
   while (
-    owedSimTime >= stepMagnitude &&
+    owedSimTime > 0 &&
     steps < MAX_STEPS_PER_PUBLISH &&
     performance.now() - budgetStart < STEP_BUDGET_MS
   ) {
-    engine.step();
-    owedSimTime -= stepMagnitude;
+    // The adaptive integrator decides its own step size, so the debt is
+    // settled by what the engine actually advanced, not by the configured dt.
+    // Subtracting dt here would let sim time run ahead of the integrator
+    // through every close encounter.
+    const advanced = engine.step();
+    if (advanced === 0) break;
+    owedSimTime -= Math.abs(advanced);
     steps++;
     if (engine.diverged) break;
   }
@@ -139,6 +144,7 @@ function advance(wallDeltaMs: number): void {
   if (owedSimTime > stepMagnitude * MAX_STEPS_PER_PUBLISH) {
     owedSimTime = stepMagnitude;
   }
+  if (owedSimTime < 0) owedSimTime = 0;
 }
 
 function tick(): void {
@@ -207,6 +213,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       case 'stepOnce': {
         const steps = Math.max(1, Math.trunc(message.steps));
         for (let i = 0; i < steps && !engine.diverged; i++) engine.step();
+        owedSimTime = 0;
         publish();
         break;
       }

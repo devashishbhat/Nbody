@@ -53,7 +53,7 @@ export const ScenarioSchema = z
     G: finite,
     softening: nonNegative,
 
-    integrator: z.enum(['leapfrog', 'yoshida4', 'bulirsch-stoer']),
+    integrator: z.enum(['leapfrog', 'yoshida4', 'dopri5']),
     dt: finite.refine((v) => v !== 0, { message: 'dt must not be 0' }),
     forceModel: z.enum(['direct', 'barnes-hut', 'auto']),
     theta: finite.refine((v) => v > 0 && v <= 2, { message: 'theta must be in (0, 2]' }),

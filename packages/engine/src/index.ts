@@ -14,7 +14,10 @@ export { FrameRing, hermite, hermiteDerivative } from './host/ring.ts';
 
 export { ReferenceEngine } from './reference/engine.ts';
 export { RefState } from './reference/state.ts';
-export { computeAccelerations, stepLeapfrog, stepYoshida4 } from './reference/integrators.ts';
+export { stepLeapfrog, stepYoshida4 } from './reference/integrators.ts';
+export { computeAccelerations, type ForceField } from './reference/forces.ts';
+export { BarnesHutTree } from './reference/barnes-hut.ts';
+export { Dopri5 } from './reference/dopri5.ts';
 export { computeDiagnostics, emptyDiagnostics, type Diagnostics } from './reference/diagnostics.ts';
 export { resolveMerges } from './reference/collisions.ts';
 

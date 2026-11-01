@@ -13,14 +13,17 @@ export type Vec3 = readonly [number, number, number];
  * `yoshida4` is a 4th order symplectic composition, three force evaluations
  * per step. For long accurate runs such as a thousand-orbit solar system.
  *
- * `bulirsch-stoer` is adaptive. Required for close encounters, collisions and
- * chaotic few-body problems, where any fixed step produces visibly wrong
- * trajectories.
+ * `dopri5` is Dormand-Prince 5(4), adaptive. Required for close encounters,
+ * collisions and chaotic few-body problems, where any fixed step produces
+ * visibly wrong trajectories. It is not symplectic and not time-symmetric, so
+ * its energy drifts rather than oscillating and reversing time under it does
+ * not retrace the path exactly. The plan called for Gragg-Bulirsch-Stoer;
+ * packages/engine/src/reference/dopri5.ts records why this is here instead.
  *
  * Time reversal falls out of the symplectic integrators for free: negate dt
  * and the trajectory retraces itself.
  */
-export type IntegratorId = 'leapfrog' | 'yoshida4' | 'bulirsch-stoer';
+export type IntegratorId = 'leapfrog' | 'yoshida4' | 'dopri5';
 
 /**
  * `auto` selects direct summation below AUTO_BARNES_HUT_THRESHOLD bodies and
