@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "WebWorker"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+
+    // No TypeScript syntax that needs transformation rather than erasure: no
+    // enums, no namespaces, no parameter properties. Keeps every source file
+    // runnable by plain `node`, which the tools under tools/ rely on, and
+    // keeps the build a pure erase step.
+    "erasableSyntaxOnly": true,
+    "resolveJsonModule": true,
+
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    // Deliberately OFF. This codebase indexes Float64Array in hot numeric
+    // loops, where TypeScript widens every element read to `number |
+    // undefined`. The resulting non-null assertions would be noise on every
+    // line of the force kernels and would hide real bugs rather than expose
+    // them. Buffer lengths are enforced by the protocol layer and asserted in
+    // tests instead. See docs/CONTRACTS.md.
+    "noUncheckedIndexedAccess": false,
+
+    "skipLibCheck": true,
+    "declaration": false,
+    "noEmit": true,
+    "jsx": "react-jsx"
+  }
+}

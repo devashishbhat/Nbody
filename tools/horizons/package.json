@@ -1,0 +1,17 @@
+{
+  "name": "@nbody/tool-horizons",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "fetch": "node --experimental-strip-types src/fetch-ephemeris.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nbody/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3"
+  }
+}

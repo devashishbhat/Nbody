@@ -1,0 +1,10 @@
+{
+  // Keeps the base `lib`, which includes DOM and WebWorker: this package
+  // imports @nbody/engine as source, and the engine's worker client references
+  // Worker and Transferable.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["src/**/*"]
+}

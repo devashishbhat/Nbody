@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+target/
+*.tsbuildinfo
+crates/nbody-wasm/pkg/
+
+# test + tooling output
+coverage/
+playwright-report/
+test-results/
+.vitest-cache/
+
+# editor + os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# local env
+.env
+.env.local

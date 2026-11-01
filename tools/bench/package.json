@@ -1,0 +1,18 @@
+{
+  "name": "@nbody/tool-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "bench": "node src/reference-bench.ts"
+  },
+  "dependencies": {
+    "@nbody/engine": "workspace:*",
+    "@nbody/protocol": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3"
+  }
+}

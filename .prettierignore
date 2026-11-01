@@ -1,0 +1,6 @@
+dist/
+target/
+pkg/
+coverage/
+pnpm-lock.yaml
+*.md

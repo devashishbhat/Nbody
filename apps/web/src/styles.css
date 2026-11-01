@@ -1,0 +1,101 @@
+@import 'tailwindcss';
+@import '@nbody/ui/tokens.css';
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The canvas is the subject. Nothing may scroll it or letterbox it. */
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.nb-canvas {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.nb-panel {
+  position: fixed;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-overlay);
+  border: 1px solid var(--line-subtle);
+  border-radius: var(--radius);
+  backdrop-filter: blur(12px);
+  font-size: var(--text-sm);
+  transition: opacity var(--panel-fade) var(--ease);
+}
+
+.nb-panel--idle {
+  opacity: var(--panel-idle-opacity);
+}
+
+.nb-top-left {
+  top: var(--space-4);
+  left: var(--space-4);
+}
+
+.nb-bottom-right {
+  right: var(--space-4);
+  bottom: var(--space-4);
+}
+
+.nb-bottom-center {
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.nb-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-4);
+  line-height: 1.7;
+}
+
+.nb-label {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.nb-button {
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.nb-button:hover {
+  border-color: var(--accent);
+}
+
+.nb-select {
+  padding: var(--space-1) var(--space-2);
+  color: var(--text-primary);
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+}
