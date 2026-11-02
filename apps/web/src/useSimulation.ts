@@ -1,108 +1,137 @@
 import { createEngineClient } from '@nbody/engine';
-import { FrameFlags, H, type EngineClient, type Scenario } from '@nbody/protocol';
+import {
+  FrameFlags,
+  H,
+  orbitalElements,
+  UNIT_LABELS,
+  type FrameSample,
+  type Scenario,
+} from '@nbody/protocol';
 import { createWebGLRenderer, WebGLUnavailableError, type Renderer } from '@nbody/renderer';
-import { formatDrift, formatFps, formatMsPerStep, LiveText } from '@nbody/ui';
-import { useEffect, useMemo, useRef } from 'react';
+import {
+  formatDaysAsYears,
+  formatDrift,
+  formatFps,
+  formatMsPerStep,
+  formatScientific,
+} from '@nbody/ui';
+import { useEffect, useRef } from 'react';
+import { attachInteractions, type InteractionHandles } from './interactions.ts';
+import type { Readouts } from './readouts.ts';
+import { attachEngine, LIVE_SAMPLE_HZ, setLiveSelected, setStatus, useStore } from './store.ts';
 
-export interface Readouts {
-  simTime: LiveText;
-  drift: LiveText;
-  fps: LiveText;
-  msPerStep: LiveText;
-  bodies: LiveText;
-}
-
-/** One stable set of text bindings for the lifetime of the component. */
-export function useReadouts(): Readouts {
-  return useMemo(
-    () => ({
-      simTime: new LiveText(),
-      drift: new LiveText(),
-      fps: new LiveText(),
-      msPerStep: new LiveText(),
-      bodies: new LiveText(),
-    }),
-    [],
-  );
+export interface SimulationHandles {
+  toggleDimension: () => void;
+  toggleFollow: () => void;
 }
 
 /**
- * The render loop.
+ * The render loop, and everything that runs inside it.
  *
- * Everything that changes per frame lives here, outside React: the canvas, the
- * camera springs, and every numeric readout, which are written straight to
- * their text nodes. React is told nothing. Driving the readouts through
- * component state instead would re-render a subtree sixty times a second and
- * make the frame budget depend on reconciliation, which is the one thing the
- * architecture is arranged to avoid. See docs/CONTRACTS.md.
+ * This is the one place that touches both the engine and the renderer every
+ * frame, and the only place allowed to. React is not involved: the readouts
+ * are written straight to their text nodes, and the single piece of state that
+ * does reach the store, the selected body's live position and velocity, is
+ * throttled to a few hertz because the inspector needs it in editable fields.
+ *
+ * Nothing here allocates. Buffers and scratch values are created once.
  */
 export function useSimulation(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
-  scenario: Scenario,
   readouts: Readouts,
-): React.RefObject<EngineClient | null> {
-  const clientRef = useRef<EngineClient | null>(null);
+): React.RefObject<SimulationHandles | null> {
+  const handlesRef = useRef<SimulationHandles | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  const interactionsRef = useRef<InteractionHandles | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const client = createEngineClient({ publishHz: 60 });
+    attachEngine(client);
 
     let renderer: Renderer;
     try {
       renderer = createWebGLRenderer({ canvas });
     } catch (error) {
       if (error instanceof WebGLUnavailableError) {
-        // Say so plainly rather than showing a black rectangle. WebGL2 has
-        // been in every major browser since 2017, so this is a hardware or
-        // policy problem rather than something to work around with a second
-        // renderer nobody maintains.
-        readouts.drift.set('no webgl2');
+        // Said plainly rather than shown as a black rectangle. WebGL2 has been
+        // in every major browser since 2017, so this is a hardware or policy
+        // problem rather than something to paper over with a second renderer.
+        setStatus('This browser cannot run WebGL2, which this simulator needs.', 'error');
         client.dispose();
+        attachEngine(null);
         return;
       }
       throw error;
     }
-    clientRef.current = client;
-    rendererRef.current = renderer;
 
-    const unsubscribe = client.onError((message, fatal) => {
-      // Non-fatal messages are the engine telling the truth about an
-      // approximation it had to make, which belongs in front of the user
-      // rather than in a console nobody opens.
-      console[fatal ? 'error' : 'warn'](`[engine] ${message}`);
+    rendererRef.current = renderer;
+    const interactions = attachInteractions(canvas, renderer);
+    interactionsRef.current = interactions;
+
+    handlesRef.current = {
+      toggleDimension() {
+        renderer.camera.setMode(renderer.camera.mode === '2d' ? '3d' : '2d');
+      },
+      toggleFollow() {
+        const handle = useStore.getState().selectedHandle;
+        renderer.camera.follow(renderer.camera.following === handle ? 0 : handle);
+      },
+    };
+
+    const unsubscribeError = client.onError((message, fatal) => {
+      setStatus(message, fatal ? 'error' : 'warn');
     });
 
-    // Exposed deliberately. A renderer is hard to inspect from the outside,
-    // and this makes the live engine and renderer reachable from the console
-    // and from tests without a build-time debug flag.
-    (window as unknown as { nbody?: unknown }).nbody = { client, renderer };
+    // Scenario and options are pushed into the renderer rather than read from
+    // it, so the renderer never has to know the store exists.
+    let currentScenario: Scenario | null = null;
+    const unsubscribeStore = useStore.subscribe((state) => {
+      if (state.scenario && state.scenario !== currentScenario) {
+        currentScenario = state.scenario;
+        renderer.setScenario(state.scenario);
+      }
+      renderer.setOptions(state.options);
+    });
 
     const observer = new ResizeObserver(() => {
       const rect = canvas.getBoundingClientRect();
       renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
     });
     observer.observe(canvas);
-
     const rect = canvas.getBoundingClientRect();
     renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
 
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const applyMotion = () => {
+      useStore.setState((state) => ({
+        options: { ...state.options, reducedMotion: reducedMotion.matches },
+      }));
+    };
+    applyMotion();
+    reducedMotion.addEventListener('change', applyMotion);
+
+    // Exposed deliberately: a renderer is hard to inspect from the outside,
+    // and this makes the live engine and renderer reachable from the console
+    // and from tests without a build-time debug flag.
+    (window as unknown as { nbody?: unknown }).nbody = { client, renderer };
+
     let raf = 0;
-    let lastFpsMs = 0;
     let frames = 0;
-    let fps = 0;
+    let lastFpsMs = 0;
+    let lastLiveMs = 0;
+    const liveIntervalMs = 1000 / LIVE_SAMPLE_HZ;
 
     const loop = (nowMs: number) => {
       raf = requestAnimationFrame(loop);
 
       frames++;
       if (nowMs - lastFpsMs >= 500) {
-        fps = (frames * 1000) / (nowMs - lastFpsMs);
+        readouts.fps.set(formatFps((frames * 1000) / (nowMs - lastFpsMs)));
         frames = 0;
         lastFpsMs = nowMs;
-        readouts.fps.set(formatFps(fps));
       }
 
       const sample = client.sample(nowMs);
@@ -110,15 +139,13 @@ export function useSimulation(
 
       renderer.draw(sample, nowMs);
 
-      const header = sample.latest.header;
-      readouts.simTime.set(sample.simTime.toFixed(3));
-      readouts.drift.set(
-        sample.latest.hasFlag(FrameFlags.Diverged)
-          ? 'diverged'
-          : formatDrift(sample.latest.energyDrift),
-      );
-      readouts.msPerStep.set(formatMsPerStep(header[H.msPerStep]));
-      readouts.bodies.set(String(sample.count));
+      const scenario = useStore.getState().scenario;
+      if (scenario) writeDiagnostics(readouts, sample, scenario);
+
+      if (nowMs - lastLiveMs >= liveIntervalMs) {
+        lastLiveMs = nowMs;
+        updateSelection(readouts, sample, renderer, scenario);
+      }
     };
 
     raf = requestAnimationFrame(loop);
@@ -126,24 +153,168 @@ export function useSimulation(
     return () => {
       cancelAnimationFrame(raf);
       observer.disconnect();
-      unsubscribe();
+      reducedMotion.removeEventListener('change', applyMotion);
+      unsubscribeError();
+      unsubscribeStore();
+      interactions.detach();
       renderer.dispose();
       client.dispose();
-      clientRef.current = null;
+      attachEngine(null);
       rendererRef.current = null;
+      interactionsRef.current = null;
+      handlesRef.current = null;
     };
-    // The loop is created once per canvas. Scenario changes are pushed through
-    // the effect below instead of tearing the worker down and rebuilding it.
   }, [canvasRef, readouts]);
 
-  useEffect(() => {
-    const client = clientRef.current;
-    const renderer = rendererRef.current;
-    if (!client || !renderer) return;
-    renderer.setScenario(scenario);
-    client.load(scenario);
-    client.play();
-  }, [scenario]);
+  return handlesRef;
+}
 
-  return clientRef;
+function writeDiagnostics(readouts: Readouts, sample: FrameSample, scenario: Scenario): void {
+  const header = sample.latest.header;
+  const labels = UNIT_LABELS[scenario.units];
+
+  readouts.simTime.set(sample.simTime.toFixed(3));
+  readouts.clock.set(
+    scenario.units === 'solar'
+      ? formatDaysAsYears(sample.simTime)
+      : `${sample.simTime.toFixed(3)} ${labels.time}`,
+  );
+  readouts.drift.set(
+    sample.latest.hasFlag(FrameFlags.Diverged)
+      ? 'diverged'
+      : formatDrift(sample.latest.energyDrift),
+  );
+  readouts.momentum.set(formatScientific(header[H.momentum]!, 3));
+  readouts.bodies.set(String(sample.count));
+  readouts.msPerStep.set(formatMsPerStep(header[H.msPerStep]!));
+  readouts.forceModel.set(
+    scenario.forceModel === 'auto'
+      ? sample.count >= 2000
+        ? 'barnes-hut'
+        : 'direct'
+      : scenario.forceModel,
+  );
+}
+
+/** Scratch, so the per-frame selection work allocates nothing. */
+const primaryPosition: [number, number, number] = [0, 0, 0];
+const primaryVelocity: [number, number, number] = [0, 0, 0];
+const bodyPosition: [number, number, number] = [0, 0, 0];
+const bodyVelocity: [number, number, number] = [0, 0, 0];
+
+/**
+ * Live values and orbital elements for the selected body.
+ *
+ * Runs at a few hertz rather than every frame. The orbital elements are the
+ * most informative thing the interface can say about a body, and they are
+ * cheap, but there is no point computing them sixty times a second for a panel
+ * a human is reading.
+ */
+function updateSelection(
+  readouts: Readouts,
+  sample: FrameSample,
+  renderer: Renderer,
+  scenario: Scenario | null,
+): void {
+  const state = useStore.getState();
+  const handle = state.selectedHandle;
+
+  if (handle === 0 || !scenario) {
+    setLiveSelected(null);
+    return;
+  }
+
+  let slot = -1;
+  for (let i = 0; i < sample.count; i++) {
+    if (sample.handles[i] === handle) {
+      slot = i;
+      break;
+    }
+  }
+  if (slot < 0) {
+    setLiveSelected(null);
+    return;
+  }
+
+  const d = slot * 3;
+  setLiveSelected({
+    position: [sample.positions[d]!, sample.positions[d + 1]!, sample.positions[d + 2]!],
+    velocity: [sample.velocities[d]!, sample.velocities[d + 1]!, sample.velocities[d + 2]!],
+  });
+
+  // Elements are measured against the heaviest body present, which is what
+  // "the orbit of this planet" means in every system that has a dominant mass.
+  let primarySlot = -1;
+  let primaryMass = -Infinity;
+  for (let i = 0; i < sample.count; i++) {
+    const index = renderer.indexOfHandle(sample.handles[i]!);
+    if (index < 0) continue;
+    const mass = scenario.bodies[index]!.mass;
+    if (mass > primaryMass) {
+      primaryMass = mass;
+      primarySlot = i;
+    }
+  }
+
+  const selectedIndex = renderer.indexOfHandle(handle);
+  if (primarySlot < 0 || primarySlot === slot || selectedIndex < 0) {
+    clearOrbitReadouts(readouts);
+    return;
+  }
+
+  const p = primarySlot * 3;
+  primaryPosition[0] = sample.positions[p]!;
+  primaryPosition[1] = sample.positions[p + 1]!;
+  primaryPosition[2] = sample.positions[p + 2]!;
+  primaryVelocity[0] = sample.velocities[p]!;
+  primaryVelocity[1] = sample.velocities[p + 1]!;
+  primaryVelocity[2] = sample.velocities[p + 2]!;
+  bodyPosition[0] = sample.positions[d]!;
+  bodyPosition[1] = sample.positions[d + 1]!;
+  bodyPosition[2] = sample.positions[d + 2]!;
+  bodyVelocity[0] = sample.velocities[d]!;
+  bodyVelocity[1] = sample.velocities[d + 1]!;
+  bodyVelocity[2] = sample.velocities[d + 2]!;
+
+  const elements = orbitalElements(
+    scenario.G,
+    primaryMass,
+    scenario.bodies[selectedIndex]!.mass,
+    primaryPosition,
+    primaryVelocity,
+    bodyPosition,
+    bodyVelocity,
+  );
+
+  if (!elements) {
+    clearOrbitReadouts(readouts);
+    return;
+  }
+
+  const labels = UNIT_LABELS[scenario.units];
+  readouts.selectedDistance.set(`${elements.distance.toPrecision(5)} ${labels.length}`);
+  readouts.selectedSpeed.set(`${elements.speed.toPrecision(5)} ${labels.velocity}`);
+  readouts.selectedEccentricity.set(elements.eccentricity.toFixed(4));
+  readouts.selectedInclination.set(`${((elements.inclination * 180) / Math.PI).toFixed(2)}°`);
+
+  if (elements.bound) {
+    readouts.selectedSemiMajor.set(`${elements.semiMajorAxis.toPrecision(5)} ${labels.length}`);
+    readouts.selectedPeriod.set(
+      scenario.units === 'solar'
+        ? formatDaysAsYears(elements.period)
+        : `${elements.period.toPrecision(5)} ${labels.time}`,
+    );
+  } else {
+    readouts.selectedSemiMajor.set('unbound');
+    readouts.selectedPeriod.set('escaping');
+  }
+}
+
+function clearOrbitReadouts(readouts: Readouts): void {
+  readouts.selectedSemiMajor.set('–');
+  readouts.selectedEccentricity.set('–');
+  readouts.selectedInclination.set('–');
+  readouts.selectedPeriod.set('–');
+  readouts.selectedDistance.set('–');
+  readouts.selectedSpeed.set('–');
 }

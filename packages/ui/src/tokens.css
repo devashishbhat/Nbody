@@ -1,8 +1,8 @@
 /**
  * Design tokens.
  *
- * LANE E owns this file. The rules below are the ones the plan commits to, so
- * changing them is a design decision rather than a tweak:
+ * The rules below are commitments rather than preferences, so changing them is
+ * a design decision:
  *
  *  - Dark first. The canvas is the subject and it is nearly black, so the
  *    chrome has to sit quietly against it.

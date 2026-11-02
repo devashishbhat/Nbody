@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { clock, diagnostic } from './helpers.ts';
 
 /**
  * Vertical slice smoke test.
@@ -24,13 +25,12 @@ test('loads a preset and runs it', async ({ page }) => {
 
   // Simulation time advancing is proof that the worker loaded the scenario,
   // stepped it, published frames, and that the main thread interpolated them.
-  const clock = page.locator('.nb-bottom-center .nb-num span');
-  await expect(clock).not.toHaveText('0.000', { timeout: 10_000 });
+  const reading = clock(page);
+  await expect(reading).not.toHaveText('0.0 d', { timeout: 10_000 });
 
-  const first = Number(await clock.textContent());
+  const first = await reading.textContent();
   await page.waitForTimeout(600);
-  const second = Number(await clock.textContent());
-  expect(second).toBeGreaterThan(first);
+  expect(await reading.textContent()).not.toBe(first);
 
   expect(errors).toEqual([]);
 });
@@ -91,9 +91,12 @@ test('keeps energy drift negligible on the figure-eight', async ({ page }) => {
   // The strictest preset: yoshida4, no softening, and an orbit that stops
   // closing if anything perturbs the state. If interpolation, a live edit or
   // the stepping budget were corrupting state, this is where it would show.
-  await page.selectOption('.nb-select', 'figure-eight');
+  await page.waitForFunction(() => window.nbody !== undefined);
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.locator('.nb-palette-input').fill('Figure Eight');
+  await page.keyboard.press('Enter');
 
-  const drift = page.locator('.nb-bottom-right .nb-num').first();
+  const drift = diagnostic(page, 'Energy drift');
   await expect(drift).toBeVisible();
   await page.waitForTimeout(2500);
 
@@ -107,30 +110,35 @@ test('keeps energy drift negligible on the figure-eight', async ({ page }) => {
 
 test('pauses and resumes', async ({ page }) => {
   await page.goto('/');
-  const clock = page.locator('.nb-bottom-center .nb-num span');
-  await expect(clock).not.toHaveText('0.000', { timeout: 10_000 });
+  const reading = clock(page);
+  await expect(reading).not.toHaveText('0.0 d', { timeout: 10_000 });
 
   await page.getByRole('button', { name: 'Pause' }).click();
   await page.waitForTimeout(400);
-  const paused = await clock.textContent();
+  const paused = await reading.textContent();
   await page.waitForTimeout(500);
-  expect(await clock.textContent()).toBe(paused);
+  expect(await reading.textContent()).toBe(paused);
 
   await page.getByRole('button', { name: 'Play' }).click();
   await page.waitForTimeout(500);
-  expect(Number(await clock.textContent())).toBeGreaterThan(Number(paused));
+  expect(await reading.textContent()).not.toBe(paused);
 });
 
 test('switches presets without reloading the page', async ({ page }) => {
   await page.goto('/');
 
   // The solar system is the default: the Sun plus eight planets.
-  const bodies = page.locator('.nb-bottom-right .nb-num').nth(1);
+  const bodies = diagnostic(page, 'Bodies');
   await expect(bodies).toHaveText('9', { timeout: 10_000 });
 
-  await page.selectOption('.nb-select', 'pythagorean');
+  // Presets are chosen from the command palette now, not a select.
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.locator('.nb-palette-input').fill('Pythagorean');
+  await page.keyboard.press('Enter');
   await expect(bodies).toHaveText('3', { timeout: 10_000 });
 
-  await page.selectOption('.nb-select', 'circular-binary');
+  await page.keyboard.press('ControlOrMeta+k');
+  await page.locator('.nb-palette-input').fill('Circular');
+  await page.keyboard.press('Enter');
   await expect(bodies).toHaveText('2', { timeout: 10_000 });
 });

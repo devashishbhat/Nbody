@@ -3,15 +3,13 @@
  *
  *   node tools/bench/src/reference-bench.ts
  *
- * This is the number the Rust core has to beat, and the reason it exists as a
- * committed harness rather than a one-off script: the entire justification for
- * a WASM physics core is a measured speedup, and published cases exist where a
- * Rust/WASM port ran slower than the TypeScript it replaced because of bridge
- * overhead. If the measured gain is small, the boundary is wrong rather than
- * the language.
+ * This harness is why the engine is written in TypeScript. It measured direct
+ * summation at 155 Mpair/s, which already meets the frame budget up to N=2048;
+ * the only gap was N=5000, and that gap is algorithmic rather than a constant
+ * factor, so Barnes-Hut closed it and a native core was not needed.
  *
- * LANE A: mirror these sizes in the criterion benches and commit both sets of
- * baselines. The budget being defended is in docs/PHYSICS.md.
+ * Run it after changing anything in the force kernels. The budget being
+ * defended is in docs/PHYSICS.md.
  */
 import { ReferenceEngine } from '@nbody/engine';
 import { defineScenario, type Scenario } from '@nbody/protocol';

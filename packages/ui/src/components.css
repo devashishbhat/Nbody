@@ -1,0 +1,189 @@
+/**
+ * Control styling.
+ *
+ * Panels are translucent overlays on a near-black canvas, so controls are
+ * drawn with borders and spacing rather than with filled backgrounds: a filled
+ * widget would read as a hole punched in the view. Labels are small and
+ * uppercase so they recede, and values are monospace with tabular figures so
+ * they never shift width as they change.
+ */
+
+.nb-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.nb-field--inline {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.nb-field-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.nb-field-value {
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.nb-hint {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+/* Track and thumb are drawn by hand: the native control is sized and coloured
+   by the platform and cannot be made to sit quietly on a dark overlay. */
+.nb-slider {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+}
+
+.nb-slider::-webkit-slider-runnable-track {
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 1px;
+}
+
+.nb-slider::-moz-range-track {
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 1px;
+}
+
+.nb-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  background: var(--text-primary);
+  border: none;
+  border-radius: 50%;
+  appearance: none;
+}
+
+.nb-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--text-primary);
+  border: none;
+  border-radius: 50%;
+}
+
+.nb-slider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.nb-slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.nb-input-wrap {
+  display: inline-flex;
+  flex: 1;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.nb-input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  padding: 3px 6px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  background: transparent;
+  border: 1px solid var(--line-subtle);
+  border-radius: 5px;
+}
+
+.nb-input:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.nb-input:disabled {
+  color: var(--text-tertiary);
+}
+
+.nb-input-suffix {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.nb-select--full {
+  width: 100%;
+}
+
+.nb-checkbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}
+
+.nb-vector {
+  margin-bottom: var(--space-3);
+}
+
+.nb-vector .nb-field--inline {
+  margin-bottom: var(--space-1);
+}
+
+.nb-vector .nb-field-label {
+  min-width: 10px;
+}
+
+/**
+ * A select's hint appears when the control is in use.
+ *
+ * These explain real trade-offs (which integrator, which force model) and so
+ * are worth having, but a paragraph permanently under every control turns a
+ * panel into a manual. Showing it on hover or focus keeps the explanation one
+ * gesture away and the panel half the height.
+ */
+.nb-field > .nb-hint {
+  max-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition:
+    max-height 180ms var(--ease),
+    opacity 180ms var(--ease),
+    margin-top 180ms var(--ease);
+}
+
+.nb-field:hover > .nb-hint,
+.nb-field:focus-within > .nb-hint {
+  max-height: 7em;
+  margin-top: var(--space-1);
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-field > .nb-hint {
+    transition: none;
+  }
+}

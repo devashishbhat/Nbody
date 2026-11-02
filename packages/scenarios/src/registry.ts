@@ -7,13 +7,10 @@ import { innerSolarSystem, solarSystem } from './presets/solar-system.ts';
 /**
  * Preset registry.
  *
- * LANE D owns this package and is expected to grow this list to the full set
- * in the plan: the JPL-derived solar system family, the remaining periodic
- * three-body families, and the procedural collective scenarios.
- *
- * The three seeds here are the ones whose initial conditions are already
- * verified against closed-form or published results, so they double as the
- * template for how a preset should be documented and tested.
+ * Every preset documents where its initial conditions came from and why its
+ * settings are what they are, because a preset with unexplained numbers cannot
+ * be checked or safely changed later. Each is validated by the schema and
+ * integrated in the cross-package physics fixtures.
  */
 export const presets: readonly Scenario[] = [
   solarSystem,

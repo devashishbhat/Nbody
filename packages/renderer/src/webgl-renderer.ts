@@ -633,9 +633,10 @@ export class WebGLRenderer implements Renderer {
   private drawOverlays(sample: FrameSample): void {
     const showVelocities = this.renderOptions.showVelocities;
     const showOrbit = this.renderOptions.showPredictedOrbit;
-    if (!showVelocities && !showOrbit) return;
+    const showHandle = this.renderOptions.velocityHandleScale > 0;
+    if (!showVelocities && !showOrbit && !showHandle) return;
 
-    const required = (sample.count * 2 + ORBIT_SAMPLES * 2) * LINE_STRIDE;
+    const required = (sample.count * 2 + ORBIT_SAMPLES * 2 + 10) * LINE_STRIDE;
     if (this.lineData.length < required) this.lineData = new Float32Array(required);
 
     let offset = 0;
@@ -677,6 +678,10 @@ export class WebGLRenderer implements Renderer {
 
     if (showOrbit && this.renderOptions.selectedHandle !== 0 && this.scenario) {
       offset = this.appendPredictedOrbit(sample, offset);
+    }
+
+    if (this.renderOptions.velocityHandleScale > 0) {
+      offset = this.appendVelocityHandle(sample, offset);
     }
 
     this.lineVertexCount = offset / LINE_STRIDE;
@@ -770,6 +775,39 @@ export class WebGLRenderer implements Renderer {
         0.3,
       );
     }
+    return offset;
+  }
+
+  /**
+   * The selected body's velocity as a draggable arrow.
+   *
+   * Drawn at the scale the interaction layer uses to hit-test it, so what you
+   * can grab is exactly what you can see.
+   */
+  private appendVelocityHandle(sample: FrameSample, startOffset: number): number {
+    const slot = this.slotOfHandle(sample, this.renderOptions.selectedHandle);
+    if (slot < 0) return startOffset;
+
+    const scale = this.renderOptions.velocityHandleScale;
+    const d = slot * 3;
+    const x = sample.positions[d]!;
+    const y = sample.positions[d + 1]!;
+    const z = sample.positions[d + 2]!;
+    const tipX = x + sample.velocities[d]! * scale;
+    const tipY = y + sample.velocities[d + 1]! * scale;
+    const tipZ = z + sample.velocities[d + 2]! * scale;
+
+    let offset = startOffset;
+    offset = this.pushLineVertex(offset, x, y, z, 0.95, 0.97, 1, 0.35);
+    offset = this.pushLineVertex(offset, tipX, tipY, tipZ, 0.95, 0.97, 1, 0.9);
+
+    // A small cross at the tip, so the grab point is visible rather than
+    // implied by the end of a line.
+    const arm = Math.hypot(tipX - x, tipY - y, tipZ - z) * 0.045;
+    offset = this.pushLineVertex(offset, tipX - arm, tipY, tipZ, 0.95, 0.97, 1, 0.9);
+    offset = this.pushLineVertex(offset, tipX + arm, tipY, tipZ, 0.95, 0.97, 1, 0.9);
+    offset = this.pushLineVertex(offset, tipX, tipY - arm, tipZ, 0.95, 0.97, 1, 0.9);
+    offset = this.pushLineVertex(offset, tipX, tipY + arm, tipZ, 0.95, 0.97, 1, 0.9);
     return offset;
   }
 
@@ -882,6 +920,16 @@ export class WebGLRenderer implements Renderer {
     out[1] = sample.positions[d + 1]!;
     out[2] = sample.positions[d + 2]!;
     return true;
+  }
+
+  /**
+   * Scenario index for a handle, or -1.
+   *
+   * The renderer already maintains this to look up colours and radii, and the
+   * interface layer needs it to turn a click into the body the user means.
+   */
+  indexOfHandle(handle: number): number {
+    return this.appearanceIndex(handle);
   }
 
   /** Handle of a slot in the last drawn sample, or 0. */

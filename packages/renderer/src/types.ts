@@ -22,6 +22,13 @@ export interface RenderOptions {
   bloom: boolean;
   /** Handle of the selected body, or 0. Highlighted and used by the overlays. */
   selectedHandle: number;
+  /**
+   * World units per unit of velocity for the selected body's drag handle.
+   *
+   * Shared with the interaction layer rather than fixed in either, because the
+   * handle has to be drawn exactly where clicking will grab it. 0 hides it.
+   */
+  velocityHandleScale: number;
   /** Suppresses bloom, trail fading and camera easing. */
   reducedMotion: boolean;
 }
@@ -34,6 +41,7 @@ export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
   showPredictedOrbit: false,
   bloom: true,
   selectedHandle: 0,
+  velocityHandleScale: 0,
   reducedMotion: false,
 };
 
@@ -92,6 +100,12 @@ export interface Renderer {
 
   /** World position of a slot in the last drawn sample. */
   positionOf(slot: number, out: Float64Array): boolean;
+
+  /** Handle of a slot in the last drawn sample, or 0. */
+  handleOf(slot: number): number;
+
+  /** Scenario index for a handle, or -1. */
+  indexOfHandle(handle: number): number;
 
   dispose(): void;
 }

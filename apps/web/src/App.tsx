@@ -1,107 +1,98 @@
-import { presets } from '@nbody/scenarios';
-import { defaultPreset } from '@nbody/scenarios';
-import { useMemo, useRef, useState } from 'react';
-import { useReadouts, useSimulation } from './useSimulation.ts';
+import { defaultPreset, getPreset, parseHash, safeDecodeScenario } from '@nbody/scenarios';
+import { useEffect, useRef } from 'react';
+import { CommandPalette } from './components/CommandPalette.tsx';
+import { Diagnostics } from './components/Diagnostics.tsx';
+import { HelpOverlay } from './components/HelpOverlay.tsx';
+import { Inspector } from './components/Inspector.tsx';
+import { StatusBar } from './components/StatusBar.tsx';
+import { TopBar } from './components/TopBar.tsx';
+import { TransportBar } from './components/TransportBar.tsx';
+import { useReadouts } from './readouts.ts';
+import { loadScenario, setStatus, useStore } from './store.ts';
+import { useIdleChrome } from './useIdleChrome.ts';
+import { useKeyboard } from './useKeyboard.ts';
+import { useSimulation } from './useSimulation.ts';
 
 /**
- * Provisional app shell.
+ * The shell.
  *
- * LANE E owns this. It is deliberately the smallest thing that proves the
- * whole slice works end to end: engine in a worker, frames interpolated on the
- * main thread, renderer drawing, readouts updating without React re-rendering.
- *
- * The real interface, which is the inspector, the transport bar, the command
- * palette and the keyboard map, is Lane E's to build. Treat the markup here as
- * a harness rather than a foundation.
+ * The canvas is the whole page and everything else is an overlay on it, which
+ * is what the minimalist brief actually requires: the simulation is the
+ * subject, the chrome is the apparatus, and the apparatus gets out of the way.
  */
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [scenarioId, setScenarioId] = useState(defaultPreset().id);
-  const [playing, setPlaying] = useState(true);
-
-  const scenario = useMemo(
-    () => presets.find((p) => p.id === scenarioId) ?? defaultPreset(),
-    [scenarioId],
-  );
-
   const readouts = useReadouts();
-  const clientRef = useSimulation(canvasRef, scenario, readouts);
+  const handles = useSimulation(canvasRef, readouts);
+  const ready = useStore((state) => state.scenario !== undefined);
 
-  const togglePlay = () => {
-    const client = clientRef.current;
-    if (!client) return;
-    if (playing) client.pause();
-    else client.play();
-    setPlaying(!playing);
-  };
+  useIdleChrome();
+  useKeyboard({
+    toggleDimension: () => handles.current?.toggleDimension(),
+    toggleFollow: () => handles.current?.toggleFollow(),
+  });
+
+  // The hash decides what loads, so a share link opens the system it names
+  // rather than the default and then jumping.
+  useEffect(() => {
+    const target = readHash();
+    if (target) loadScenario(target.scenario, target.presetId);
+    else {
+      const preset = defaultPreset();
+      loadScenario(preset, preset.id);
+    }
+  }, []);
 
   return (
     <>
-      <canvas ref={canvasRef} className="nb-canvas" />
+      <canvas
+        ref={canvasRef}
+        className="nb-canvas"
+        aria-label="Gravitational simulation"
+        role="img"
+      />
 
-      <div className="nb-panel nb-top-left">
-        <div className="nb-label">Preset</div>
-        <select
-          className="nb-select"
-          value={scenarioId}
-          onChange={(event) => {
-            setScenarioId(event.target.value);
-            setPlaying(true);
-          }}
-        >
-          {presets.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.name}
-            </option>
-          ))}
-        </select>
-        <p style={{ maxWidth: 260, color: 'var(--text-secondary)' }}>{scenario.description}</p>
-        {scenario.watchFor ? (
-          <p style={{ maxWidth: 260, color: 'var(--text-tertiary)' }}>{scenario.watchFor}</p>
-        ) : null}
-      </div>
+      {ready ? (
+        <>
+          <TopBar />
+          <TransportBar readouts={readouts} />
+          <Inspector readouts={readouts} />
+          <Diagnostics readouts={readouts} />
+          <CommandPalette />
+          <HelpOverlay />
+        </>
+      ) : null}
 
-      <div className="nb-panel nb-bottom-center">
-        <button className="nb-button" onClick={togglePlay}>
-          {playing ? 'Pause' : 'Play'}
-        </button>
-        <button className="nb-button" onClick={() => clientRef.current?.stepOnce(1)}>
-          Step
-        </button>
-        <button className="nb-button" onClick={() => clientRef.current?.reset()}>
-          Reset
-        </button>
-        <span className="nb-num">
-          t = <span ref={readouts.simTime.attach}>0.000</span>
-        </span>
-      </div>
-
-      <div className="nb-panel nb-bottom-right">
-        <div className="nb-row">
-          <span className="nb-label">Energy drift</span>
-          <span className="nb-num" ref={readouts.drift.attach}>
-            0.0e+00
-          </span>
-        </div>
-        <div className="nb-row">
-          <span className="nb-label">Bodies</span>
-          <span className="nb-num" ref={readouts.bodies.attach}>
-            0
-          </span>
-        </div>
-        <div className="nb-row">
-          <span className="nb-label">Per step</span>
-          <span className="nb-num" ref={readouts.msPerStep.attach}>
-            0.000 ms
-          </span>
-        </div>
-        <div className="nb-row">
-          <span className="nb-label">FPS</span>
-          <span className="nb-num" ref={readouts.fps.attach}>
-            ---
-          </span>
-        </div>
-      </div>
+      <StatusBar />
     </>
   );
+}
+
+/** Resolves the location hash into something to load. */
+function readHash(): {
+  scenario: ReturnType<typeof defaultPreset>;
+  presetId: string | null;
+} | null {
+  if (!window.location.hash) return null;
+
+  try {
+    const target = parseHash(window.location.hash);
+    if (!target) return null;
+
+    if (target.kind === 'preset') {
+      const preset = getPreset(target.id);
+      if (preset) return { scenario: preset, presetId: preset.id };
+      setStatus(`There is no preset called "${target.id}"`, 'warn');
+      return null;
+    }
+
+    return { scenario: target.scenario, presetId: null };
+  } catch {
+    // Reported rather than ignored. Silently loading something else when
+    // someone follows a shared link is worse than saying the link is broken.
+    const value = new URLSearchParams(window.location.hash.slice(1)).get('s');
+    const result = value ? safeDecodeScenario(value) : null;
+    setStatus(result && !result.ok ? result.error : 'That share link could not be read', 'error');
+    return null;
+  }
 }

@@ -1,12 +1,14 @@
 /**
  * @nbody/ui
  *
- * LANE E owns this package together with apps/web.
+ * The design tokens, the primitives that keep per-frame values out of React,
+ * and the reusable controls. Panels and layout live in the app.
  *
- * What is here in Phase 0 is the part the rest of the UI has to be built on
- * rather than around: the design tokens, and the primitives that keep
- * per-frame values out of React. The panels, inspector, transport bar and
- * command palette are Lane E's to build.
+ * Optional props on these controls are declared `?: T | undefined` rather than
+ * `?: T`. `exactOptionalPropertyTypes` is on, which otherwise rejects
+ * `disabled={maybeUndefined}`, and forwarding a possibly-undefined prop is how
+ * React components are normally composed. Saying so in the types is better
+ * than relaxing the flag, which is catching real mistakes in the numeric code.
  */
 export { LiveText, useLiveText } from './live.ts';
 export {
@@ -17,3 +19,9 @@ export {
   formatScientific,
   formatSimTime,
 } from './format.ts';
+
+export { LogSlider, type LogSliderProps } from './controls/LogSlider.tsx';
+export { NumberField, type NumberFieldProps } from './controls/NumberField.tsx';
+export { VectorField, type VectorFieldProps } from './controls/VectorField.tsx';
+export { Select, type SelectOption, type SelectProps } from './controls/Select.tsx';
+export { Toggle, type ToggleProps } from './controls/Toggle.tsx';

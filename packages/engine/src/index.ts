@@ -4,10 +4,9 @@
  * The simulation host: the worker, the client that talks to it, the playback
  * interpolator, and the TypeScript reference engine.
  *
- * The reference engine is not a placeholder to be deleted. It unblocks the
- * renderer and UI lanes now, and it stays as the parity oracle the Rust engine
- * is tested against, because an engine with no independent implementation to
- * disagree with has no way to be shown wrong.
+ * The engine runs entirely in TypeScript. Barnes-Hut closes the large-N gap
+ * that direct summation could not, and the adaptive integrator covers the
+ * close-encounter cases a fixed step gets wrong.
  */
 export { createEngineClient, type EngineClientOptions, type WorkerLike } from './host/client.ts';
 export { FrameRing, hermite, hermiteDerivative } from './host/ring.ts';

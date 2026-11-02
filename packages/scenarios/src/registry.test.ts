@@ -5,9 +5,10 @@ import { presets, presetsById, defaultPreset } from './registry.ts';
 /**
  * Every preset is validated here.
  *
- * LANE D: this suite must keep passing as presets are added. A preset that
- * fails validation would otherwise surface as a blank screen or a NaN cascade
- * at load time, which is far more expensive to debug than a failing assertion.
+ * Every preset is validated here, and the suite is written so that adding one
+ * extends it automatically. A preset that fails validation would otherwise
+ * surface as a blank screen or a NaN cascade at load, which is far more
+ * expensive to debug than a failing assertion.
  */
 describe('preset registry', () => {
   it('has a default preset', () => {
