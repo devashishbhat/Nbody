@@ -18,6 +18,7 @@ interface NbodyHandle {
       project: (x: number, y: number, z: number, out: Float64Array) => boolean;
     };
     positionOf: (slot: number, out: Float64Array) => boolean;
+    setOptions: (options: Record<string, unknown>) => void;
     debugStats: () => {
       trails: number;
       trailSamples: number;

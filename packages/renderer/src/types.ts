@@ -80,8 +80,17 @@ export interface CameraController {
 export interface Renderer {
   readonly camera: CameraController;
 
-  /** Rebuilds per-body state. Call whenever the scenario changes. */
+  /**
+   * Updates per-body appearance. Call on every scenario change.
+   *
+   * Does not touch the camera or existing trails, because an edit to a mass
+   * produces a new scenario object and must not throw away the view the user
+   * has arranged.
+   */
   setScenario(scenario: Scenario): void;
+
+  /** Frames the camera and clears trails. Call when a scenario is LOADED. */
+  resetView(scenario: Scenario): void;
 
   /** Draws one frame. Called from requestAnimationFrame. Allocates nothing. */
   draw(sample: FrameSample, nowMs: number): void;

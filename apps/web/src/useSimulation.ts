@@ -95,11 +95,24 @@ export function useSimulation(
 
     // Scenario and options are pushed into the renderer rather than read from
     // it, so the renderer never has to know the store exists.
+    //
+    // The two cases are deliberately distinguished. Any change to the
+    // scenario, including editing one body's mass, replaces the object and
+    // needs the appearance tables refreshed. Only an actual LOAD should frame
+    // the camera and clear the trails, which is what loadToken marks: without
+    // it, changing a mass threw away the view you had arranged, including the
+    // camera mode.
     let currentScenario: Scenario | null = null;
+    let currentLoadToken = -1;
     const unsubscribeStore = useStore.subscribe((state) => {
       if (state.scenario && state.scenario !== currentScenario) {
         currentScenario = state.scenario;
         renderer.setScenario(state.scenario);
+
+        if (state.loadToken !== currentLoadToken) {
+          currentLoadToken = state.loadToken;
+          renderer.resetView(state.scenario);
+        }
       }
       renderer.setOptions(state.options);
     });

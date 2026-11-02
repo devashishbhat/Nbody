@@ -66,6 +66,16 @@ export interface AppState {
   presetId: string | null;
 
   /**
+   * Incremented only when a scenario is LOADED, never when one is edited.
+   *
+   * Editing a mass replaces the scenario object, so object identity cannot
+   * tell a load from an edit, and the renderer needs to know the difference:
+   * a load should frame the camera and clear the trails, an edit must leave
+   * both alone.
+   */
+  loadToken: number;
+
+  /**
    * The selected body, held as both a handle and an id.
    *
    * The handle is what the renderer and the frame data speak, and it survives
@@ -128,6 +138,7 @@ function withBody(scenario: Scenario, id: string, patch: BodyPatch): Scenario {
 export const useStore = create<AppState>(() => ({
   scenario: undefined as unknown as Scenario,
   presetId: null,
+  loadToken: 0,
   selectedHandle: 0,
   selectedBodyId: null,
   playing: true,
@@ -166,6 +177,7 @@ export function loadScenario(scenario: Scenario, presetId: string | null): void 
   set({
     scenario: copy,
     presetId,
+    loadToken: get().loadToken + 1,
     selectedHandle: 0,
     selectedBodyId: null,
     playing: true,

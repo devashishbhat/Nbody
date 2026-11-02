@@ -290,6 +290,19 @@ export class WebGLRenderer implements Renderer {
     return vao;
   }
 
+  /**
+   * Updates the per-body appearance tables.
+   *
+   * Safe to call on every change to the scenario, and it IS called on every
+   * change, because editing a mass produces a new scenario object. So it must
+   * not touch anything the user has since established: not the camera, and not
+   * the trails.
+   *
+   * That separation is the whole point of having two methods. When this also
+   * framed the camera, changing a mass threw away the view you had arranged
+   * and wiped every trail, because an edit is indistinguishable from a load by
+   * object identity alone.
+   */
   setScenario(scenario: Scenario): void {
     this.scenario = scenario;
     const count = scenario.bodies.length;
@@ -325,9 +338,33 @@ export class WebGLRenderer implements Renderer {
     this.logMinRadius = Math.log(minRadius);
     this.logRadiusRange = Math.log(maxRadius) - this.logMinRadius;
 
-    this.bodyData = new Float32Array(Math.max(count, 1) * BODY_STRIDE);
-    this.lineData = new Float32Array((count * 2 + ORBIT_SAMPLES * 2) * LINE_STRIDE);
+    if (this.bodyData.length < count * BODY_STRIDE) {
+      this.bodyData = new Float32Array(count * BODY_STRIDE);
+    }
+    const lineCapacity = (count * 2 + ORBIT_SAMPLES * 2 + 10) * LINE_STRIDE;
+    if (this.lineData.length < lineCapacity) this.lineData = new Float32Array(lineCapacity);
 
+    // Trails are keyed by handle, so a body that stopped asking for one has to
+    // give its slot back. Bodies that still want theirs keep it, and with it
+    // their history.
+    for (const [handle, trail] of this.trails) {
+      const index = this.handleToIndex.get(handle);
+      if (index === undefined || index >= count || !this.scenarioTrails[index]) {
+        this.freeTrailSlots.push(trail.slot);
+        this.trails.delete(handle);
+      } else {
+        // Re-point at the new colour array, which was just replaced.
+        trail.color = this.scenarioColors.subarray(index * 3, index * 3 + 3);
+      }
+    }
+  }
+
+  /**
+   * Frames the camera on a scenario and clears what belonged to the last one.
+   *
+   * Called when a scenario is LOADED, not when one is edited.
+   */
+  resetView(scenario: Scenario): void {
     this.trails.clear();
     this.freeTrailSlots = Array.from({ length: MAX_TRAILS }, (_, i) => MAX_TRAILS - 1 - i);
     this.handleToIndex.clear();

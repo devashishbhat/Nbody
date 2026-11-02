@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { cameraDistance, cameraMode, clock, massOf, ready, snapshot } from './helpers.ts';
 
 /**
@@ -195,5 +195,79 @@ test.describe('narrow screens', () => {
 
     // And the transport is still reachable with the sheet open.
     await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  });
+});
+
+test.describe('editing preserves the view', () => {
+  /**
+   * Editing a body replaces the scenario object, which is indistinguishable
+   * from loading a new one by identity alone. When the renderer could not tell
+   * the difference, changing a mass snapped the camera back to the preset's
+   * framing and mode and wiped every trail, which is a long way from what
+   * "set the Sun's mass to 2" asks for.
+   */
+  async function cameraState(page: Page) {
+    return page.evaluate(() => ({
+      mode: window.nbody!.renderer.camera.mode,
+      distance: window.nbody!.renderer.camera.distance,
+    }));
+  }
+
+  test('keeps the camera when a mass changes', async ({ page }) => {
+    await ready(page);
+
+    await page.keyboard.press('d');
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+    await page.mouse.move(box.x + 500, box.y + 400);
+    await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(700);
+
+    const before = await cameraState(page);
+    expect(before.mode).toBe('3d');
+
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.locator('.nb-inspector-bar .nb-label')).toHaveText('Body');
+    const field = page.locator('.nb-inspector input.nb-input').nth(1);
+    await field.fill('2');
+    await field.blur();
+    await page.waitForTimeout(700);
+
+    expect(massOf(await snapshot(page), 'Sun')).toBe(2);
+
+    const after = await cameraState(page);
+    expect(after.mode).toBe('3d');
+    // Allow for the easing still settling, but not for a snap back to the
+    // preset's distance of 32.
+    expect(after.distance).toBeCloseTo(before.distance, 1);
+  });
+
+  test('keeps the trails when a setting changes', async ({ page }) => {
+    await ready(page);
+    await page.waitForTimeout(1500);
+
+    const samples = () => page.evaluate(() => window.nbody!.renderer.debugStats().trailSamples);
+    const before = await samples();
+    expect(before).toBeGreaterThan(0);
+
+    await page.selectOption('.nb-inspector select >> nth=0', 'yoshida4');
+    await page.waitForTimeout(300);
+
+    // Still accumulating on the same history rather than starting over.
+    expect(await samples()).toBeGreaterThanOrEqual(before);
+  });
+
+  test('does frame the camera when a scenario is loaded', async ({ page }) => {
+    await ready(page);
+    await page.keyboard.press('d');
+    await page.waitForTimeout(600);
+    expect((await cameraState(page)).mode).toBe('3d');
+
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('.nb-palette-input').fill('Figure Eight');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(700);
+
+    // The figure-eight is a flat preset, so loading it must reassert that.
+    expect((await cameraState(page)).mode).toBe('2d');
   });
 });
