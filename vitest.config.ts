@@ -23,5 +23,21 @@ export default defineConfig({
     ],
     environment: 'node',
     reporters: ['default'],
+
+    /**
+     * Thirty seconds, not the five-second default.
+     *
+     * That default is sized for unit tests. Much of this suite is numerical
+     * integration: the adaptive integrator is checked against a brute-force
+     * symplectic reference that takes five million steps, and it is accurate
+     * precisely because it is expensive. On a CI runner about four times
+     * slower than the machine these were written on, that test took 5.4
+     * seconds and was killed mid-run, which looks like a correctness failure
+     * and is not one.
+     *
+     * Still bounded, so a genuine hang is still caught. Individual tests that
+     * need longer say so themselves.
+     */
+    testTimeout: 30_000,
   },
 });
