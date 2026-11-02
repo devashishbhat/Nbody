@@ -379,18 +379,30 @@ describe('accretion', () => {
     return heaviest;
   }
 
-  it('conserves momentum through a bouncing run', () => {
+  it('conserves momentum through a bouncing run', { timeout: 60_000 }, () => {
     // Bouncing applies an impulse along the line of centres split by inverse
     // mass, so it must not shift the centre of mass however many impacts
     // happen.
+    //
+    // Two and a half thousand steps rather than the twenty thousand this
+    // started with. That was ten seconds locally and thirty-two on a CI
+    // runner, which blew the suite timeout, and it was not buying anything:
+    // the energy check below already shows plenty of impacts by this point.
     const engine = new ReferenceEngine();
     engine.load({ ...accretionDisk, collisions: 'bounce', restitution: 0.6 });
-    const before = engine.measure().momentum;
+    const momentumBefore = engine.measure().momentum;
+    const energyBefore = engine.measure().energy;
 
-    for (let i = 0; i < 20_000; i++) engine.step();
+    for (let i = 0; i < 2500; i++) engine.step();
 
-    // No merges, so nothing left the system.
+    expect(engine.measure().momentum).toBeCloseTo(momentumBefore, 9);
+    // Nothing merged, so nothing left the system.
     expect(engine.state.count).toBe(accretionDisk.bodies.length);
-    expect(engine.measure().momentum).toBeCloseTo(before, 6);
+
+    // And bounces genuinely happened, rather than the momentum check passing
+    // because nothing ever touched. A restitution of 0.6 is inelastic, so
+    // every impact removes energy, and gravity alone would conserve it.
+    const energyAfter = engine.measure().energy;
+    expect(energyBefore - energyAfter).toBeGreaterThan(Math.abs(energyBefore) * 0.01);
   });
 });
