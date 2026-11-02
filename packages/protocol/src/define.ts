@@ -96,8 +96,17 @@ function slug(name: string): string {
   );
 }
 
+/**
+ * Copies a vector, normalising negative zero away.
+ *
+ * Generated initial conditions produce -0 constantly: `-speed * Math.sin(0)`
+ * is -0, and so is any product with a zero factor and a negative sign. It is
+ * physically identical to 0, but it is not the same value to `Object.is`, and
+ * JSON does not preserve it. Normalising here makes a scenario canonical, so
+ * that encoding and decoding a preset gives back exactly the preset.
+ */
 function toVec3(v: readonly [number, number, number]): Vec3 {
-  return [v[0], v[1], v[2]];
+  return [v[0] === 0 ? 0 : v[0], v[1] === 0 ? 0 : v[1], v[2] === 0 ? 0 : v[2]];
 }
 
 export function defineScenario(input: ScenarioInput): Scenario {
@@ -120,8 +129,12 @@ export function defineScenario(input: ScenarioInput): Scenario {
       velocity: toVec3(b.velocity),
       color: b.color ?? FALLBACK_PALETTE[index % FALLBACK_PALETTE.length],
     };
-    if (b.locked !== undefined) body.locked = b.locked;
-    if (b.trail !== undefined) body.trail = b.trail;
+    // Only recorded when true. `locked: false` and `trail: false` mean
+    // exactly what their absence means, and storing them explicitly makes two
+    // identical scenarios structurally different, which breaks share-link
+    // round trips and preset comparison for no benefit.
+    if (b.locked) body.locked = true;
+    if (b.trail) body.trail = true;
     return body;
   });
 

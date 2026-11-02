@@ -141,6 +141,8 @@ export class WebGLRenderer implements Renderer {
 
   /** Handle to scenario index, rebuilt whenever the body set changes. */
   private handleToIndex = new Map<number, number>();
+  /** Body the scenario asked the camera to follow, pending a handle for it. */
+  private pendingFollowId: string | null = null;
   private trails = new Map<number, Trail>();
   private freeTrailSlots: number[] = [];
   private lastTopologyVersion = -1;
@@ -331,6 +333,10 @@ export class WebGLRenderer implements Renderer {
     this.handleToIndex.clear();
     this.lastTopologyVersion = -1;
 
+    // Resolved once the first frame arrives and handles are known, since a
+    // scenario names a body by id and the camera follows handles.
+    this.pendingFollowId = scenario.camera?.followBodyId ?? null;
+
     const camera = scenario.camera;
     this.camera.snapTo(
       camera?.target[0] ?? 0,
@@ -371,6 +377,14 @@ export class WebGLRenderer implements Renderer {
       this.handleToIndex.clear();
       for (let i = 0; i < sample.count; i++) {
         this.handleToIndex.set(sample.handles[i]!, i);
+      }
+
+      if (this.pendingFollowId !== null) {
+        const index = this.scenario.bodies.findIndex((body) => body.id === this.pendingFollowId);
+        if (index >= 0 && index < sample.count) {
+          this.camera.follow(sample.handles[index]!);
+        }
+        this.pendingFollowId = null;
       }
     }
 

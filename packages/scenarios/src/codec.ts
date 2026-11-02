@@ -98,6 +98,8 @@ interface CompactScenario {
     distance: number,
     azimuth: number,
     elevation: number,
+    /** Body the camera follows. Empty string when it follows nothing. */
+    followBodyId: string,
   ];
   b: CompactBody[];
 }
@@ -149,6 +151,7 @@ function toCompact(scenario: Scenario): CompactScenario {
       scenario.camera.distance,
       scenario.camera.azimuth,
       scenario.camera.elevation,
+      scenario.camera.followBodyId ?? '',
     ];
   }
   return compact;
@@ -198,6 +201,9 @@ function rebuild(compact: CompactScenario): Scenario {
       azimuth: compact.cam[5],
       elevation: compact.cam[6],
     };
+    // Absent and empty mean the same thing, and only one of them is
+    // representable in a positional array.
+    if (compact.cam[7]) scenario.camera.followBodyId = compact.cam[7];
   }
 
   return scenario;

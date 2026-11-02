@@ -104,9 +104,26 @@ export class Camera implements CameraController {
     return this.z;
   }
 
-  /** Orthographic half-height in 2D, orbit radius in 3D. */
+  /**
+   * Half-height of the view at the target, in world units, in BOTH modes.
+   *
+   * Not the eye distance. Treating it as the orbit radius in 3D made the same
+   * number frame a scenario completely differently in each mode: with a 50
+   * degree field of view, the visible height at the target is only 0.93 times
+   * the eye distance, against 2 times the half-height in orthographic. A
+   * preset framed in 2D then showed less than half as much when switched to
+   * 3D, which is how the galaxy presets ended up mostly off screen.
+   *
+   * Defining it as the visible half-height instead makes a scenario's camera
+   * distance mean one thing, and makes switching modes keep the framing.
+   */
   get distance(): number {
     return Math.exp(this.logDistance);
+  }
+
+  /** Eye distance in 3D, derived so the framing matches 2D. */
+  private get eyeDistance(): number {
+    return this.distance / Math.tan(FOV_Y / 2);
   }
 
   /** Pixels per world unit at the target plane. Drives body sizing. */
@@ -261,11 +278,12 @@ export class Camera implements CameraController {
       orthographic(this.projection, distance, aspect, -1e4 * distance, 1e4 * distance);
       lookAt(this.view, 0, 0, distance, 0, 0, 0, 0, 1, 0);
     } else {
-      perspective(this.projection, FOV_Y, aspect, distance * 1e-3, distance * 1e4);
+      const eye = this.eyeDistance;
+      perspective(this.projection, FOV_Y, aspect, eye * 1e-3, eye * 1e4);
       const cosElevation = Math.cos(this.elevation);
-      const eyeX = distance * cosElevation * Math.cos(this.azimuth);
-      const eyeY = distance * cosElevation * Math.sin(this.azimuth);
-      const eyeZ = distance * Math.sin(this.elevation);
+      const eyeX = eye * cosElevation * Math.cos(this.azimuth);
+      const eyeY = eye * cosElevation * Math.sin(this.azimuth);
+      const eyeZ = eye * Math.sin(this.elevation);
       lookAt(this.view, eyeX, eyeY, eyeZ, 0, 0, 0, 0, 0, 1);
     }
 

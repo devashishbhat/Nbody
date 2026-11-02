@@ -45,6 +45,13 @@ export function computeAccelerations(state: RefState, G: number, softening: numb
     const freeI = locked[i] === 0;
 
     for (let j = i + 1; j < n; j++) {
+      // Neither body can move the other if both are massless, so the pair can
+      // be skipped before the distance is computed. This is not a micro
+      // optimisation: the restricted problems are mostly test particles, and
+      // in the Trojan preset 520 of 522 bodies are massless, which makes
+      // 99.2% of the pairs in the system a pure waste of a square root.
+      if (mi === 0 && mass[j] === 0) continue;
+
       const dx = x[j] - xi;
       const dy = y[j] - yi;
       const dz = z[j] - zi;

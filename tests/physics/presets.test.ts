@@ -1,6 +1,16 @@
 import { ReferenceEngine } from '@nbody/engine';
 import { type Scenario } from '@nbody/protocol';
-import { innerSolarSystem, presets, solarSystem } from '@nbody/scenarios';
+import {
+  innerSolarSystem,
+  lagrangeTriangle,
+  presets,
+  solarSystem,
+  trojans,
+  LAGRANGE_PERIOD,
+  THREE_BODY_PERIODS,
+  THREE_BODY_PRESETS,
+  TROJAN_PERIOD,
+} from '@nbody/scenarios';
 import { describe, expect, it } from 'vitest';
 
 /**
@@ -32,12 +42,16 @@ describe('every preset is integrable', () => {
   it.each(presets.map((p) => [p.id, p] as const))(
     '%s stays finite and bounded in energy',
     (_id, scenario) => {
-      // Deliberately short: this is a smoke test over every preset, not an
-      // accuracy measurement. A preset with a typo in its initial conditions
-      // usually diverges within a few hundred steps.
-      const engine = run(scenario, 2000);
+      // Deliberately short, and shorter still for the large presets: this is a
+      // smoke test over every preset, not an accuracy measurement. A preset
+      // with a typo in its initial conditions diverges within a few hundred
+      // steps, and a few hundred steps of a two-thousand-body cluster is
+      // already seconds of direct summation.
+      const steps = scenario.bodies.length > 500 ? 150 : 2000;
+      const engine = run(scenario, steps);
       expect(engine.diverged).toBe(false);
       expect(Number.isFinite(engine.measure().energy)).toBe(true);
+      expect(drift(engine)).toBeLessThan(0.05);
     },
   );
 });
@@ -120,31 +134,35 @@ describe('solar system ephemeris', () => {
     expect(error).toBeLessThan(5e-3);
   });
 
-  it('keeps leapfrog energy error bounded over forty years rather than drifting', () => {
-    // The property that makes a symplectic integrator the right default: the
-    // error oscillates with the orbits and its envelope stays flat. A
-    // non-symplectic method of the same order would grow roughly linearly in
-    // elapsed time, so comparing the first twenty years with the second twenty
-    // is what actually distinguishes them. Bounding a single number would not.
-    const engine = new ReferenceEngine();
-    engine.load(solarSystem);
-    const perYear = Math.round(YEAR / solarSystem.dt);
+  it(
+    'keeps leapfrog energy error bounded over forty years rather than drifting',
+    { timeout: 30_000 },
+    () => {
+      // The property that makes a symplectic integrator the right default: the
+      // error oscillates with the orbits and its envelope stays flat. A
+      // non-symplectic method of the same order would grow roughly linearly in
+      // elapsed time, so comparing the first twenty years with the second twenty
+      // is what actually distinguishes them. Bounding a single number would not.
+      const engine = new ReferenceEngine();
+      engine.load(solarSystem);
+      const perYear = Math.round(YEAR / solarSystem.dt);
 
-    const worstIn = (years: number): number => {
-      let worst = 0;
-      for (let year = 0; year < years; year++) {
-        for (let i = 0; i < perYear; i++) engine.step();
-        worst = Math.max(worst, drift(engine));
-      }
-      return worst;
-    };
+      const worstIn = (years: number): number => {
+        let worst = 0;
+        for (let year = 0; year < years; year++) {
+          for (let i = 0; i < perYear; i++) engine.step();
+          worst = Math.max(worst, drift(engine));
+        }
+        return worst;
+      };
 
-    const firstHalf = worstIn(20);
-    const secondHalf = worstIn(20);
+      const firstHalf = worstIn(20);
+      const secondHalf = worstIn(20);
 
-    expect(firstHalf).toBeLessThan(1e-7);
-    expect(secondHalf).toBeLessThan(firstHalf * 2);
-  });
+      expect(firstHalf).toBeLessThan(1e-7);
+      expect(secondHalf).toBeLessThan(firstHalf * 2);
+    },
+  );
 
   it('keeps Mercury bound in the inner system over four years', () => {
     const engine = run(innerSolarSystem, Math.round((YEAR * 4) / innerSolarSystem.dt));
@@ -161,5 +179,155 @@ describe('solar system ephemeris', () => {
     // Larger than the full system's, because removing Jupiter and Saturn
     // shrinks the total energy this is measured against by a factor of 30.
     expect(drift(engine)).toBeLessThan(1e-6);
+  });
+});
+
+describe('periodic orbits close', () => {
+  /**
+   * Integrates exactly one period and measures how far each body lands from
+   * where it began.
+   *
+   * `dt` is chosen to divide the period exactly. Using a round step and
+   * `round(period / dt)` of them stops short by up to half a step, which at
+   * these speeds is a position error far larger than anything the integrator
+   * contributes.
+   */
+  function returnError(scenario: Scenario, period: number): number {
+    const steps = Math.max(2000, Math.round(period / Math.abs(scenario.dt)));
+    const engine = new ReferenceEngine();
+    engine.load({ ...scenario, dt: period / steps });
+    const start = scenario.bodies.map((body) => [...body.position]);
+
+    if (scenario.integrator === 'dopri5') {
+      // Adaptive: run to the target time rather than for a step count.
+      let elapsed = 0;
+      let guard = 0;
+      while (elapsed < period && guard++ < 2_000_000) {
+        const advanced = engine.step();
+        if (advanced === 0) break;
+        elapsed += advanced;
+      }
+    } else {
+      for (let i = 0; i < steps; i++) engine.step();
+    }
+
+    let worst = 0;
+    for (let i = 0; i < start.length; i++) {
+      worst = Math.max(
+        worst,
+        Math.hypot(
+          engine.state.x[i] - start[i]![0]!,
+          engine.state.y[i] - start[i]![1]!,
+          engine.state.z[i] - start[i]![2]!,
+        ),
+      );
+    }
+    return worst;
+  }
+
+  it.each(
+    THREE_BODY_PRESETS.filter((scenario) => scenario.id !== 'lagrange-triangle').map(
+      (scenario) => [scenario.id, scenario] as const,
+    ),
+  )('%s returns to its starting configuration after one period', (id, scenario) => {
+    // The published initial conditions carry five decimal places, which sets
+    // the floor: these orbits close to between 2e-4 and 9e-4 and no tighter,
+    // whatever the integrator does. A transcription error in one of those two
+    // velocity components moves this to a tenth of the system's size.
+    const period = THREE_BODY_PERIODS[id]!;
+    expect(returnError(scenario, period)).toBeLessThan(3e-3);
+  });
+
+  it('closes the Lagrange triangle to machine precision', () => {
+    // Derived rather than transcribed, so unlike the catalogue orbits there is
+    // no published-precision floor underneath it.
+    expect(returnError(lagrangeTriangle, LAGRANGE_PERIOD)).toBeLessThan(1e-10);
+  });
+
+  it('keeps the Lagrange triangle rigid, not merely periodic', () => {
+    // The defining property: all three separations are constant for all time,
+    // not just at the end of a period.
+    const engine = new ReferenceEngine();
+    engine.load(lagrangeTriangle);
+    const separation = () =>
+      Math.hypot(
+        engine.state.x[0] - engine.state.x[1],
+        engine.state.y[0] - engine.state.y[1],
+        engine.state.z[0] - engine.state.z[1],
+      );
+
+    const initial = separation();
+    for (let i = 0; i < 40_000; i++) {
+      engine.step();
+      if (i % 500 === 0) expect(separation()).toBeCloseTo(initial, 9);
+    }
+  });
+
+  // Fourteen Jupiter orbits of a 522-body system. Slow by design: the
+  // libration period is about twelve orbits, so a shorter run could not tell
+  // a trapped asteroid from a slowly escaping one.
+  it('keeps the Trojan clouds trapped at their Lagrange points', { timeout: 60_000 }, () => {
+    // The real test of the configuration. The asteroids are massless test
+    // particles sixty degrees from Jupiter, and the triangular points are
+    // stable, so the clouds should LIBRATE about their points rather than
+    // circulate right around the orbit.
+    //
+    // Libration is the thing to be careful about here. The real Jupiter
+    // Trojans swing back and forth about L4 and L5 with a period near 150
+    // years, which is about twelve Jupiter orbits, and amplitudes of tens of
+    // degrees. So an asteroid at eighty-five degrees after twelve orbits is
+    // behaving correctly, not escaping, and a test that demanded it stay near
+    // sixty would be asserting the wrong physics.
+    //
+    // What distinguishes trapped from escaped is the bound: a librating
+    // asteroid never approaches Jupiter itself or the opposite side of the
+    // orbit. That is what is checked, sampled throughout the run rather than
+    // only at the end.
+    const engine = new ReferenceEngine();
+    engine.load(trojans);
+
+    const jupiter = engine.state.slotOf('jupiter');
+    const sun = engine.state.slotOf('sun');
+
+    const meanAngle = (prefix: string): number => {
+      const jx = engine.state.x[jupiter] - engine.state.x[sun];
+      const jy = engine.state.y[jupiter] - engine.state.y[sun];
+      const jupiterLength = Math.hypot(jx, jy);
+
+      let total = 0;
+      let counted = 0;
+      for (let i = 0; i < engine.state.count; i++) {
+        if (!engine.state.ids[i]!.startsWith(prefix)) continue;
+        const ax = engine.state.x[i] - engine.state.x[sun];
+        const ay = engine.state.y[i] - engine.state.y[sun];
+        const cos = (jx * ax + jy * ay) / (jupiterLength * Math.hypot(ax, ay));
+        total += (Math.acos(Math.min(1, Math.max(-1, cos))) * 180) / Math.PI;
+        counted++;
+      }
+      return counted === 0 ? Number.NaN : total / counted;
+    };
+
+    expect(meanAngle('greek')).toBeGreaterThan(55);
+    expect(meanAngle('greek')).toBeLessThan(65);
+
+    const steps = Math.round((TROJAN_PERIOD * 14) / trojans.dt);
+    const sampleEvery = Math.round(steps / 40);
+    let widest = 0;
+
+    for (let i = 0; i < steps; i++) {
+      engine.step();
+      if (i % sampleEvery !== 0) continue;
+      for (const prefix of ['greek', 'trojan']) {
+        const angle = meanAngle(prefix);
+        widest = Math.max(widest, Math.abs(angle - 60));
+        // Never near Jupiter (0) and never near the far side (180).
+        expect(angle).toBeGreaterThan(20);
+        expect(angle).toBeLessThan(120);
+      }
+    }
+
+    // And it really does librate rather than sitting still, which is what
+    // makes the bound above meaningful rather than vacuous.
+    expect(widest).toBeGreaterThan(5);
   });
 });

@@ -27,7 +27,7 @@
 import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SOLAR_SYSTEM, type BodyData } from './bodies.ts';
+import { SYSTEMS, type BodyData, type SystemSpec } from './bodies.ts';
 
 const HORIZONS = 'https://ssd.jpl.nasa.gov/api/horizons.api';
 
@@ -41,14 +41,14 @@ export interface StateVector {
   velocity: [number, number, number];
 }
 
-function query(command: string): string {
+function query(command: string, center: string): string {
   const params = new URLSearchParams({
     format: 'text',
     COMMAND: `'${command}'`,
     OBJ_DATA: "'NO'",
     MAKE_EPHEM: "'YES'",
     EPHEM_TYPE: "'VECTORS'",
-    CENTER: "'500@0'",
+    CENTER: `'${center}'`,
     START_TIME: `'${EPOCH}'`,
     STOP_TIME: `'2026-01-02'`,
     STEP_SIZE: "'1 d'",
@@ -100,31 +100,30 @@ export function parseVectors(body: BodyData, text: string): StateVector {
   };
 }
 
-async function fetchBody(body: BodyData): Promise<StateVector> {
-  const response = await fetch(query(body.command));
+async function fetchBody(body: BodyData, center: string): Promise<StateVector> {
+  const response = await fetch(query(body.command, center));
   if (!response.ok) {
     throw new Error(`${body.name}: Horizons returned ${response.status}`);
   }
   return parseVectors(body, await response.text());
 }
 
-async function main(): Promise<void> {
+async function fetchSystem(system: SystemSpec): Promise<void> {
   const vectors: StateVector[] = [];
-  for (const body of SOLAR_SYSTEM) {
+  for (const body of system.bodies) {
     // Serial and deliberately unhurried. This runs by hand, perhaps once a
     // year, and Horizons is a shared public service.
-    process.stdout.write(`fetching ${body.name}... `);
-    const vector = await fetchBody(body);
-    vectors.push(vector);
+    process.stdout.write(`  ${body.name.padEnd(10)} `);
+    vectors.push(await fetchBody(body, system.center));
     process.stdout.write('ok\n');
   }
 
-  const epochs = new Set(vectors.map((v) => v.jdtdb));
+  const epochs = new Set(vectors.map((vector) => vector.jdtdb));
   if (epochs.size !== 1) {
-    throw new Error(`bodies came back at different epochs: ${[...epochs].join(', ')}`);
+    throw new Error(`${system.id}: bodies came back at different epochs`);
   }
 
-  const bodies = SOLAR_SYSTEM.map((body, index) => {
+  const bodies = system.bodies.map((body, index) => {
     const vector = vectors[index]!;
     return {
       name: body.name,
@@ -138,7 +137,7 @@ async function main(): Promise<void> {
 
   const output = {
     source: 'JPL Horizons',
-    center: 'solar system barycentre (500@0)',
+    center: system.centerLabel,
     frame: 'ecliptic of J2000',
     units: 'AU, days, solar masses',
     epoch: EPOCH,
@@ -148,19 +147,28 @@ async function main(): Promise<void> {
   };
 
   const here = dirname(fileURLToPath(import.meta.url));
-  const target = resolve(here, '../../../packages/scenarios/src/data/solar-system.json');
+  const target = resolve(here, `../../../packages/scenarios/src/data/${system.id}.json`);
   await writeFile(target, `${JSON.stringify(output, null, 2)}\n`, 'utf8');
-  process.stdout.write(`\nwrote ${target}\n`);
 
-  // Report the residual centre-of-mass motion. Barycentric input should leave
-  // this tiny; a large value means the mass table and the Horizons targets
-  // have drifted out of agreement.
-  const totalMass = bodies.reduce((sum, b) => sum + b.mass, 0);
+  // Residual centre-of-mass motion. For a barycentric fetch this should be
+  // tiny; a large value means the mass table and the Horizons targets have
+  // drifted out of agreement, which is the mistake this tool is most likely
+  // to make.
+  const totalMass = bodies.reduce((sum, body) => sum + body.mass, 0);
   const momentum = [0, 1, 2].map((axis) =>
-    bodies.reduce((sum, b) => sum + b.mass * b.velocity[axis]!, 0),
+    bodies.reduce((sum, body) => sum + body.mass * body.velocity[axis]!, 0),
   );
   const speed = Math.hypot(...momentum.map((p) => p / totalMass));
-  process.stdout.write(`centre-of-mass speed: ${speed.toExponential(3)} AU/day\n`);
+  process.stdout.write(
+    `  wrote ${system.id}.json, centre-of-mass speed ${speed.toExponential(3)} AU/day\n\n`,
+  );
+}
+
+async function main(): Promise<void> {
+  for (const system of SYSTEMS) {
+    process.stdout.write(`${system.id}\n`);
+    await fetchSystem(system);
+  }
 }
 
 main().catch((error: unknown) => {
