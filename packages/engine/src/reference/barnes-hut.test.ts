@@ -206,12 +206,17 @@ describe('Barnes-Hut against direct summation', () => {
     const halfMs = measure(half, 3);
     const sevenMs = measure(seven, 3);
 
-    expect(halfMs).toBeLessThan(directMs / 2.5);
-    // theta 0.7 is what a 5000-body preset actually runs at, and it has to fit
-    // inside a 16.7 ms frame with room for the rest of the work. Bounded
-    // generously so it stays reliable on loaded CI hardware while still
-    // failing if the tree regresses toward quadratic.
-    expect(sevenMs).toBeLessThan(14);
+    // Ratios, not milliseconds. An absolute bound measures the machine rather
+    // than the code: this asserted "under 14 ms" and failed at 21 ms on a CI
+    // runner roughly half the speed of the laptop it was written on, which
+    // said nothing about the tree. A ratio normalises that away, and it is
+    // also the claim actually being made, that replacing distant clusters with
+    // their centre of mass does far less work than visiting every pair.
+    //
+    // What this would fail on is the thing worth catching: a tree that has
+    // regressed toward quadratic. Measured, these ratios are about 3.3 and 6.
+    expect(directMs / halfMs).toBeGreaterThan(2.5);
+    expect(directMs / sevenMs).toBeGreaterThan(4);
   });
 
   it('stays usable at the theta a large preset would choose', () => {
