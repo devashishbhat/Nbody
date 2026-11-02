@@ -92,6 +92,9 @@ export interface Renderer {
   /** Frames the camera and clears trails. Call when a scenario is LOADED. */
   resetView(scenario: Scenario): void;
 
+  /** Discards trail history, keeping the camera. Call when time restarts. */
+  clearTrails(): void;
+
   /** Draws one frame. Called from requestAnimationFrame. Allocates nothing. */
   draw(sample: FrameSample, nowMs: number): void;
 

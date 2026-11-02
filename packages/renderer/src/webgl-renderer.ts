@@ -367,6 +367,20 @@ export class WebGLRenderer implements Renderer {
   }
 
   /**
+   * Discards all trail history, keeping the camera and the appearance tables.
+   *
+   * A trail records where a body has been. Restarting the simulation makes
+   * that record false, so leaving it on screen does not just look untidy: the
+   * bodies jump back to their starting points while their old paths stay put,
+   * and a straight line is drawn joining the two, which looks exactly like a
+   * reset that did not happen.
+   */
+  clearTrails(): void {
+    for (const trail of this.trails.values()) this.freeTrailSlots.push(trail.slot);
+    this.trails.clear();
+  }
+
+  /**
    * Frames the camera on a scenario and clears what belonged to the last one.
    *
    * Called when a scenario is LOADED, not when one is edited.

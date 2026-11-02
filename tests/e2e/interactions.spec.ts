@@ -376,3 +376,88 @@ test.describe('moving around the view', () => {
     expect((await origin(page)).distance).toBeLessThan(before.distance * 0.8);
   });
 });
+
+test.describe('reset', () => {
+  // Note the exact match. The preset button's accessible name begins "Preset",
+  // which contains "reset", so a substring match picks up both.
+  const resetButton = (page: Page) => page.getByRole('button', { name: 'Reset', exact: true });
+
+  test('restarts the clock and discards the trails', async ({ page }) => {
+    await ready(page);
+    await page.waitForTimeout(2000);
+
+    const trailSamples = () =>
+      page.evaluate(() => window.nbody!.renderer.debugStats().trailSamples);
+
+    const before = await trailSamples();
+    expect(before).toBeGreaterThan(100);
+    const clockBefore = Number.parseFloat((await clock(page).textContent()) ?? '0');
+
+    await resetButton(page).click();
+    await page.waitForTimeout(250);
+
+    // The history is gone, not merely added to. Leaving it meant the bodies
+    // jumped back to the start while their old paths stayed on screen, joined
+    // to the new positions by a straight line, which looks exactly like a
+    // reset that did not happen.
+    expect(await trailSamples()).toBeLessThan(before);
+    expect(Number.parseFloat((await clock(page).textContent()) ?? '0')).toBeLessThan(clockBefore);
+  });
+
+  test('puts the bodies back where they started', async ({ page }) => {
+    await ready(page);
+
+    // Paused first, so the comparison is against a stationary state rather
+    // than whatever the simulation drifted to between the two reads.
+    await page.getByRole('button', { name: 'Pause' }).click();
+    await resetButton(page).click();
+    await page.waitForTimeout(250);
+    const first = (await snapshot(page)).bodies.find((b) => b.name === 'Earth')!.position;
+
+    await page.getByRole('button', { name: 'Play' }).click();
+    await page.waitForTimeout(1500);
+    const moved = (await snapshot(page)).bodies.find((b) => b.name === 'Earth')!.position;
+    expect(Math.hypot(moved[0] - first[0], moved[1] - first[1])).toBeGreaterThan(0.05);
+
+    await page.getByRole('button', { name: 'Pause' }).click();
+    await resetButton(page).click();
+    await page.waitForTimeout(250);
+    const second = (await snapshot(page)).bodies.find((b) => b.name === 'Earth')!.position;
+
+    // Reset is repeatable and lands in the same place every time, which is
+    // what "back to the start" has to mean.
+    expect(second[0]).toBeCloseTo(first[0], 9);
+    expect(second[1]).toBeCloseTo(first[1], 9);
+  });
+
+  test('keeps a mass edit, and keeps the view', async ({ page }) => {
+    await ready(page);
+
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(page.locator('.nb-inspector-bar .nb-label')).toHaveText('Body');
+    const field = page.locator('.nb-inspector input.nb-input').nth(1);
+    await field.fill('2');
+    await field.blur();
+    await page.waitForTimeout(300);
+
+    await page.mouse.move(box.x + 500, box.y + 400);
+    await page.mouse.wheel(0, -240);
+    // Long enough for the zoom easing to settle, or the comparison is against
+    // a value still in motion.
+    await page.waitForTimeout(900);
+    const zoomed = await page.evaluate(() => window.nbody!.renderer.camera.distance);
+
+    await resetButton(page).click();
+    await page.waitForTimeout(500);
+
+    // Reset puts the bodies back. It does not undo the control panel, and it
+    // does not take back the view you arranged.
+    expect(massOf(await snapshot(page), 'Sun')).toBe(2);
+    // A relative bound, not a decimal count: the easing is asymptotic and
+    // never lands exactly. What matters is that the camera is still where it
+    // was and has not been thrown back to the preset's framing of 9 AU.
+    const after = await page.evaluate(() => window.nbody!.renderer.camera.distance);
+    expect(Math.abs(after - zoomed) / zoomed).toBeLessThan(1e-3);
+  });
+});

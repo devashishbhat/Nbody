@@ -108,6 +108,7 @@ export function useSimulation(
     // camera mode.
     let currentScenario: Scenario | null = null;
     let currentLoadToken = -1;
+    let currentResetToken = 0;
     const unsubscribeStore = useStore.subscribe((state) => {
       if (state.scenario && state.scenario !== currentScenario) {
         currentScenario = state.scenario;
@@ -118,6 +119,15 @@ export function useSimulation(
           renderer.resetView(state.scenario);
         }
       }
+
+      if (state.resetToken !== currentResetToken) {
+        currentResetToken = state.resetToken;
+        // Restarting time makes the trail history false, and the velocity
+        // handle was sized against a velocity the body no longer has.
+        renderer.clearTrails();
+        handleHandle = 0;
+      }
+
       renderer.setOptions(state.options);
     });
 

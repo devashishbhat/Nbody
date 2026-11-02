@@ -76,6 +76,16 @@ export interface AppState {
   loadToken: number;
 
   /**
+   * Incremented when the simulation is restarted from its document.
+   *
+   * Distinct from loadToken: a reset puts the bodies back without reframing
+   * the camera, because the view someone has arranged is theirs to keep. What
+   * it must discard is the trail history, which describes a timeline that no
+   * longer happened.
+   */
+  resetToken: number;
+
+  /**
    * The selected body, held as both a handle and an id.
    *
    * The handle is what the renderer and the frame data speak, and it survives
@@ -161,6 +171,7 @@ export const useStore = create<AppState>(() => ({
   scenario: undefined as unknown as Scenario,
   presetId: null,
   loadToken: 0,
+  resetToken: 0,
   selectedHandle: 0,
   selectedBodyId: null,
   playing: true,
@@ -219,6 +230,7 @@ export function resetScenario(): void {
   client?.load(scenario);
   if (get().playing) client?.play();
   else client?.pause();
+  set({ resetToken: get().resetToken + 1 });
 }
 
 export function selectHandle(handle: number, bodyId: string | null): void {
