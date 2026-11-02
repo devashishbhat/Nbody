@@ -1,37 +1,13 @@
 # N-Body
 
 An interactive gravitational N-body simulator for the web. Load the solar
-system or a classic three-body orbit, then change any body's mass, velocity or
-position and watch what happens.
+system, a periodic three-body orbit or a two-thousand-body galaxy, then change
+anything you like and watch what happens.
 
-Three things define it: a minimalist interface, motion that feels genuinely
-smooth, and real editable physics rather than a canned animation.
+Twenty presets. Four of them are real JPL ephemeris data. Nothing restarts when
+you edit it.
 
-## Status: Phase 0 complete
-
-The shared contract, the simulation host and a working vertical slice exist.
-Five lanes can now proceed in parallel. See **[docs/AGENTS.md](docs/AGENTS.md)**
-for who owns what and what to build next.
-
-| Area                            | State                                                                 |
-| ------------------------------- | --------------------------------------------------------------------- |
-| Contract (`@nbody/protocol`)    | Done. Frozen. 34 tests.                                               |
-| Engine host (`@nbody/engine`)   | Worker, client, Hermite interpolator, TS reference engine. 43 tests.   |
-| Physics (`crates/nbody-core`)   | Traits, SoA state, direct kernel, leapfrog, yoshida4. **Uncompiled.**  |
-| WASM boundary                   | Layout constants and the build plan only.                             |
-| Renderer (`@nbody/renderer`)    | Contracts fixed. Provisional Canvas2D; WebGL2 is Lane C's.             |
-| Scenarios (`@nbody/scenarios`)  | 5 presets, real JPL ephemeris. Codec and the rest are Lane D's.        |
-| UI (`@nbody/ui`, `apps/web`)    | Tokens, live-text primitive, formatters, provisional shell.           |
-
-**The Rust workspace has never been compiled**: no toolchain was installed in
-the environment where Phase 0 was written. Lane A's first task is to install
-`rustup` and run `cargo test --workspace`, expecting to fix small compile
-errors.
-
-Everything else is verified: 101 unit tests and 5 Playwright tests pass, and
-the app builds and runs.
-
-## Quick start
+## Run it
 
 ```bash
 pnpm install
@@ -40,60 +16,120 @@ pnpm dev            # http://localhost:5173
 
 ```bash
 pnpm verify         # format, lint, typecheck, unit tests
-pnpm test           # unit tests only
-pnpm test:e2e       # Playwright, needs `pnpm build` first
-pnpm test:rust      # needs rustup, see above
-pnpm build:wasm     # needs rustup and wasm-pack
+pnpm test:e2e       # Playwright, after pnpm build
+pnpm bench          # engine throughput
 ```
 
-Regenerate the solar system ephemeris from JPL Horizons:
+Regenerate the ephemeris from JPL Horizons:
 
 ```bash
 pnpm --filter @nbody/tool-horizons fetch
 ```
 
+## What it does
+
+**Watch.** Twenty systems, each with a sentence saying what it is and a second
+saying what to look for. Real solar system data from JPL Horizons at 1 January
+2026. Nine periodic three-body orbits, each verified to return to its starting
+point after exactly one published period. Star clusters, a cold collapse, a
+galaxy flyby that draws out tidal tails.
+
+**Change.** Click a body to select it, drag it to move it, drag the tip of its
+velocity arrow to aim it, shift-drag empty space to sling a new body into the
+system. Mass, radius, colour, gravity, the integrator, the time step, softening,
+the force model and the collision mode are all live. Undo and redo everything.
+
+**Understand.** Energy drift, momentum and cost are on screen the whole time,
+so you can see when a simulation stops being trustworthy. The selected body
+shows its osculating orbital elements, which change as you perturb it, and its
+predicted orbit can be drawn as you drag.
+
+**Share.** Any system compresses into the URL. No server, no accounts, nothing
+to operate.
+
 ## How it works
 
-Physics runs in a Web Worker at a fixed step. The main thread renders at a
-fixed lag behind the newest frame and interpolates with cubic Hermite splines,
-using the velocities the frame carries. Frame buffers are transferred and
-recycled, so a running simulation allocates nothing on either thread. React
-renders the static shell only; anything that changes per frame is written
-straight to the DOM from inside the animation frame.
+Physics runs in a Web Worker at a fixed step. The main thread renders at a fixed
+lag behind the newest frame and interpolates with cubic Hermite splines, using
+the velocities each frame carries, so worker jitter never reaches the screen.
+Frame buffers are transferred and recycled rather than copied, so a running
+simulation allocates nothing on either thread. React renders the static shell
+only: every value that changes per frame is written straight to the DOM from
+inside the animation frame.
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains why, including why not
-WebGPU and why not Three.js.
+Rendering is hand-written WebGL2. Bodies are instanced discs drawn from a signed
+distance field, so they stay round and antialiased at any zoom. Trails are GPU
+ring buffers. The reference grid is one full-screen quad that reconstructs a
+world ray per fragment and snaps to whichever power of ten keeps cells near
+ninety pixels.
+
+Direct summation up to about two thousand bodies, a Barnes-Hut octree above
+that. Leapfrog by default, Yoshida 4 for accuracy, and adaptive Dormand-Prince
+for close encounters, where a fixed step is not merely less accurate but
+actually wrong.
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the choices, including why
+the physics is TypeScript rather than Rust compiled to WebAssembly, which is
+what the plan originally called for.
+
+## Verification
+
+261 unit tests and 17 browser tests.
+
+The physics is checked against closed-form solutions and published results
+rather than against itself: convergence order, bounded symplectic energy error,
+exact momentum conservation, time reversal, Barnes-Hut converging to direct
+summation as theta goes to zero, and every periodic orbit returning to its
+starting configuration after one period. The solar system is checked against
+reality: Earth comes out at 0.9834 AU and 30.28 km/s, and the barycentre lands
+just outside the Sun's surface.
+
+The browser tests cover selection, mass editing, undo, live setting changes,
+zoom, slingshot spawning, the command palette, a share-link round trip and the
+keyboard map.
+
+[docs/PHYSICS.md](docs/PHYSICS.md) has the numbers.
+
+## Performance
+
+Measured on an Apple M4. Every preset holds 60 fps, including the 2,602-body
+galaxy flyby. The engine reaches 155 Mpair/s on direct summation; Barnes-Hut
+takes N = 5000 from 59 ms per force evaluation to 10 ms.
+
+Headless CI reports lower frame rates because it rasterises in software, which
+is why the browser tests assert behaviour rather than frame rate.
 
 ## Documentation
 
-| Document                                     | Contents                                                      |
-| -------------------------------------------- | ------------------------------------------------------------- |
-| [CONTRACTS.md](docs/CONTRACTS.md)            | Frozen interfaces and eleven rules. **Read first.**            |
-| [AGENTS.md](docs/AGENTS.md)                  | Lane ownership, working rules, what each lane builds next.     |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md)      | Thread model, package graph, technology choices.               |
-| [PHYSICS.md](docs/PHYSICS.md)                | Integrators, force models, units, verified results.            |
-| [DESIGN.md](docs/DESIGN.md)                  | Visual language, layout, scale handling, motion.               |
+| Document                                | Contents                                           |
+| --------------------------------------- | -------------------------------------------------- |
+| [CONTRACTS.md](docs/CONTRACTS.md)       | Frozen interfaces and eleven rules. Read first.     |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Thread model, package graph, technology choices.    |
+| [PHYSICS.md](docs/PHYSICS.md)           | Integrators, force models, units, verified results. |
+| [DESIGN.md](docs/DESIGN.md)             | Visual language, layout, scale handling, motion.    |
+
+## Deploying
+
+Pushing to `main` builds and publishes to GitHub Pages via
+`.github/workflows/deploy.yml`. Enable Pages for the repository with "GitHub
+Actions" as the source and it works with no further configuration: the workflow
+sets the base path from the repository name, which the simulation worker's URL
+depends on.
+
+For any other static host, `pnpm build` writes `apps/web/dist`. Set `BASE_PATH`
+if it is not served from the root.
 
 ## Layout
 
 ```
-crates/nbody-core     physics, no WASM dependency       Lane A
-crates/nbody-wasm     the boundary, nothing else        Lane B
-packages/protocol     the frozen contract               shared
-packages/engine       worker, client, ring, reference   Lane B
-packages/renderer     WebGL2                            Lane C
-packages/scenarios    presets, generators, codec        Lane D
-packages/ui           tokens and primitives             Lane E
-apps/web              Vite shell                        Lane E
-tools/horizons        ephemeris fetcher                  Lane D
-tools/bench           benchmark harness                  Lane A
-tests/physics         cross-package physics fixtures     shared
-tests/e2e             Playwright                         shared
+packages/protocol     the shared contract: types, schema, frame layout, orbits
+packages/engine       worker, client, interpolation ring, the physics engine
+packages/renderer     WebGL2, camera, interaction contracts
+packages/scenarios    presets, procedural generators, share-link codec
+packages/ui           design tokens, live-text primitive, controls
+apps/web              the application: store, panels, interactions
+tools/horizons        JPL ephemeris fetcher
+tools/bench           throughput harness
+tests/physics         cross-package fixtures: a real engine over real presets
+tests/e2e             Playwright
 ```
-
-## Stack
-
-Rust compiled to WebAssembly for the physics, hand-written WebGL2 for
-rendering, React 19 and Tailwind v4 for the shell, Vite, pnpm and Cargo
-workspaces, deployed as a static site. No server: scenarios encode into the URL
-hash.
