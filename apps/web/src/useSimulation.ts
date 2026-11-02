@@ -386,10 +386,10 @@ function updateSelection(
 }
 
 function clearOrbitReadouts(readouts: Readouts): void {
-  readouts.selectedSemiMajor.set('–');
-  readouts.selectedEccentricity.set('–');
-  readouts.selectedInclination.set('–');
-  readouts.selectedPeriod.set('–');
-  readouts.selectedDistance.set('–');
-  readouts.selectedSpeed.set('–');
+  readouts.selectedSemiMajor.set('-');
+  readouts.selectedEccentricity.set('-');
+  readouts.selectedInclination.set('-');
+  readouts.selectedPeriod.set('-');
+  readouts.selectedDistance.set('-');
+  readouts.selectedSpeed.set('-');
 }

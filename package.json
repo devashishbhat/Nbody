@@ -2,6 +2,26 @@
   "name": "nbody",
   "version": "0.1.0",
   "private": true,
+  "description": "An interactive gravitational N-body simulator for the web, with real solar system data and editable physics.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/devashishbhat/Nbody.git"
+  },
+  "homepage": "https://devashishbhat.github.io/Nbody/",
+  "bugs": "https://github.com/devashishbhat/Nbody/issues",
+  "keywords": [
+    "n-body",
+    "simulation",
+    "gravity",
+    "orbital-mechanics",
+    "astronomy",
+    "solar-system",
+    "three-body-problem",
+    "barnes-hut",
+    "webgl",
+    "physics"
+  ],
   "type": "module",
   "packageManager": "pnpm@12.16.1",
   "engines": {

@@ -122,14 +122,14 @@ Silicon laptop (`pnpm --filter @nbody/tool-bench bench`):
 | 2,048 | 13.775  | 152.2   | 1.2                      |
 | 5,000 | 97.210  | 128.6   | 0.2                      |
 
-**This changes the priority order for Lane A.** Plain TypeScript already meets
-the targets at N ≤ 2048. What it cannot do is N = 5000, where it is five times
-over budget and no amount of SIMD closes a gap that large: the work itself has
-to shrink.
+**This measurement is why the engine is TypeScript.** It already meets the
+frame budget at N up to 2048. What it cannot do is N = 5000, where it is five
+times over budget, and a gap that large does not close with a faster inner
+loop: the work itself has to shrink. Barnes-Hut shrinks it, in any language.
 
-So Barnes-Hut is the critical piece, not the SIMD kernel. SIMD buys headroom
-for more substeps at small N, which is worth having but is not what unblocks a
-preset. Build the octree first.
+A native core compiled to WebAssembly was the original plan, and was dropped
+after this. It would still buy headroom at small N, and the seam it would slot
+into is still there, but it was not what any preset needed.
 
 ### Softening
 

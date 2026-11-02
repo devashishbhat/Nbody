@@ -1,135 +1,129 @@
 # N-Body
 
-An interactive gravitational N-body simulator for the web. Load the solar
-system, a periodic three-body orbit or a two-thousand-body galaxy, then change
-anything you like and watch what happens.
+An interactive gravitational simulator. Watch the real solar system, a periodic
+three-body orbit, or two galaxies tearing each other apart. Then change
+anything you like while it runs.
 
-Twenty presets. Four of them are real JPL ephemeris data. Nothing restarts when
-you edit it.
+### [Open it →](https://devashishbhat.github.io/Nbody/)
 
-## Run it
+![Three equal masses tracing a single figure-eight curve](docs/images/figure-eight.png)
 
-```bash
-pnpm install
-pnpm dev            # http://localhost:5173
-```
+## What you can do
 
-```bash
-pnpm verify         # format, lint, typecheck, unit tests
-pnpm test:e2e       # Playwright, after pnpm build
-pnpm bench          # engine throughput
-```
+**Watch twenty systems.** The Sun and all eight planets, from real JPL Horizons
+ephemeris data. Earth and the Moon. Jupiter with the four moons Galileo saw.
+Nine periodic solutions to the three-body problem, including Lagrange's
+equilateral triangle and the figure-eight above. Star clusters, a cold
+collapse, Jupiter's Trojan asteroids, and a galaxy flyby of 2,602 bodies.
 
-Regenerate the ephemeris from JPL Horizons:
+**Change the physics while it runs.** Nothing restarts. Drag a planet to a new
+orbit, grab the tip of its velocity arrow and aim it somewhere else, or hold shift and drag empty space to sling a new body into the system. Set gravity itself to
+something it has never been. Make Jupiter a thousand times heavier and watch
+the inner planets lose their orbits.
 
-```bash
-pnpm --filter @nbody/tool-horizons fetch
-```
+**See whether it is still true.** The energy drift readout tells you how far
+the simulation has strayed from conservation. Below 1e-9 you can trust what you
+are watching; when it starts climbing, your time step is too coarse for what is
+happening. The selected body shows its live orbital elements, which breathe as
+you perturb it.
 
-## What it does
+**Share what you made.** Any system compresses into the URL. No account, no
+server, no database.
 
-**Watch.** Twenty systems, each with a sentence saying what it is and a second
-saying what to look for. Real solar system data from JPL Horizons at 1 January
-2026. Nine periodic three-body orbits, each verified to return to its starting
-point after exactly one published period. Star clusters, a cold collapse, a
-galaxy flyby that draws out tidal tails.
+![The Sun and the inner planets with their trails](docs/images/solar-system.png)
 
-**Change.** Click a body to select it, drag it to move it, drag the tip of its
-velocity arrow to aim it, shift-drag empty space to sling a new body into the
-system. Mass, radius, colour, gravity, the integrator, the time step, softening,
-the force model and the collision mode are all live. Undo and redo everything.
+![Two disk galaxies passing close enough to raise tidal tails](docs/images/galaxy-flyby.png)
 
-**Understand.** Energy drift, momentum and cost are on screen the whole time,
-so you can see when a simulation stops being trustworthy. The selected body
-shows its osculating orbital elements, which change as you perturb it, and its
-predicted orbit can be drawn as you drag.
+## Controls
 
-**Share.** Any system compresses into the URL. No server, no accounts, nothing
-to operate.
+Press `?` in the app for the full list. The short version:
+
+| | |
+| --- | --- |
+| Drag | Move the view. Two-finger scroll on a trackpad. |
+| Scroll / pinch | Zoom where the pointer is |
+| Click a body | Select it |
+| Drag a body | Move it |
+| Drag the arrow tip | Change its velocity |
+| Shift + drag | Sling a new body into the system |
+| `⌘K` | Every preset and command |
+| `Space` | Play or pause |
+| `D` | Flat or orbiting camera |
 
 ## How it works
 
-Physics runs in a Web Worker at a fixed step. The main thread renders at a fixed
-lag behind the newest frame and interpolates with cubic Hermite splines, using
-the velocities each frame carries, so worker jitter never reaches the screen.
-Frame buffers are transferred and recycled rather than copied, so a running
-simulation allocates nothing on either thread. React renders the static shell
-only: every value that changes per frame is written straight to the DOM from
-inside the animation frame.
+Physics runs in a Web Worker at a fixed step. The main thread renders at a
+fixed lag behind the newest frame and interpolates with cubic Hermite splines,
+using the velocities each frame carries, so a stutter in the simulation never
+reaches the screen. Frame buffers are transferred and recycled rather than
+copied, so a running simulation allocates nothing on either thread.
 
-Rendering is hand-written WebGL2. Bodies are instanced discs drawn from a signed
-distance field, so they stay round and antialiased at any zoom. Trails are GPU
-ring buffers. The reference grid is one full-screen quad that reconstructs a
-world ray per fragment and snaps to whichever power of ten keeps cells near
-ninety pixels.
+Rendering is hand-written WebGL2. Forces use direct summation up to about two
+thousand bodies and a Barnes-Hut octree above that. Three integrators: leapfrog
+by default, Yoshida 4 for accuracy, and adaptive Dormand-Prince for close
+encounters, where a fixed step is not merely less accurate but gives a
+different answer.
 
-Direct summation up to about two thousand bodies, a Barnes-Hut octree above
-that. Leapfrog by default, Yoshida 4 for accuracy, and adaptive Dormand-Prince
-for close encounters, where a fixed step is not merely less accurate but
-actually wrong.
+Every preset holds 60 fps.
 
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the choices, including why
-the physics is TypeScript rather than Rust compiled to WebAssembly, which is
-what the plan originally called for.
+## Is the physics real?
 
-## Verification
+Yes, and it is tested rather than asserted.
 
-261 unit tests and 17 browser tests.
+The integrators are checked against closed-form solutions: order of
+convergence, bounded symplectic energy error, exact momentum conservation, and
+time reversal retracing its own path. Barnes-Hut is checked against direct
+summation. Every periodic orbit is integrated for exactly one published period
+and measured against where it started. The figure-eight closes to 4 parts in
+100 million, a floor set by the published initial conditions rather than by
+the integration.
 
-The physics is checked against closed-form solutions and published results
-rather than against itself: convergence order, bounded symplectic energy error,
-exact momentum conservation, time reversal, Barnes-Hut converging to direct
-summation as theta goes to zero, and every periodic orbit returning to its
-starting configuration after one period. The solar system is checked against
-reality: Earth comes out at 0.9834 AU and 30.28 km/s, and the barycentre lands
-just outside the Sun's surface.
+The solar system is checked against reality. Earth comes out at 0.9834 AU from
+the Sun moving at 30.28 km/s, and the barycentre lands just outside the Sun's
+surface, which is where it actually is.
 
-The browser tests cover selection, mass editing, undo, live setting changes,
-zoom, slingshot spawning, the command palette, a share-link round trip and the
-keyboard map.
+268 unit tests and 30 browser tests. [docs/PHYSICS.md](docs/PHYSICS.md) has the
+numbers.
 
-[docs/PHYSICS.md](docs/PHYSICS.md) has the numbers.
+## Running it yourself
 
-## Performance
+```bash
+pnpm install
+pnpm dev
+```
 
-Measured on an Apple M4. Every preset holds 60 fps, including the 2,602-body
-galaxy flyby. The engine reaches 155 Mpair/s on direct summation; Barnes-Hut
-takes N = 5000 from 59 ms per force evaluation to 10 ms.
+```bash
+pnpm verify    # format, lint, typecheck, tests
+pnpm test:e2e  # browser tests, after pnpm build
+pnpm bench     # engine throughput
+```
 
-Headless CI reports lower frame rates because it rasterises in software, which
-is why the browser tests assert behaviour rather than frame rate.
+Refresh the ephemeris from JPL Horizons with
+`pnpm --filter @nbody/tool-horizons fetch`. The committed data is the source of
+truth at runtime, so the site never calls an external API.
 
-## Documentation
+## Reading the source
 
-| Document                                | Contents                                           |
-| --------------------------------------- | -------------------------------------------------- |
-| [CONTRACTS.md](docs/CONTRACTS.md)       | Frozen interfaces and eleven rules. Read first.     |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Thread model, package graph, technology choices.    |
-| [PHYSICS.md](docs/PHYSICS.md)           | Integrators, force models, units, verified results. |
-| [DESIGN.md](docs/DESIGN.md)             | Visual language, layout, scale handling, motion.    |
-
-## Deploying
-
-Pushing to `main` builds and publishes to GitHub Pages via
-`.github/workflows/deploy.yml`. Enable Pages for the repository with "GitHub
-Actions" as the source and it works with no further configuration: the workflow
-sets the base path from the repository name, which the simulation worker's URL
-depends on.
-
-For any other static host, `pnpm build` writes `apps/web/dist`. Set `BASE_PATH`
-if it is not served from the root.
-
-## Layout
+| | |
+| --- | --- |
+| [CONTRACTS.md](docs/CONTRACTS.md) | The interfaces and rules everything is built on |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Thread model, package layout, why these choices |
+| [PHYSICS.md](docs/PHYSICS.md) | Integrators, force models, units, verified results |
+| [DESIGN.md](docs/DESIGN.md) | Visual language, layout, how scale is handled |
 
 ```
 packages/protocol     the shared contract: types, schema, frame layout, orbits
-packages/engine       worker, client, interpolation ring, the physics engine
-packages/renderer     WebGL2, camera, interaction contracts
-packages/scenarios    presets, procedural generators, share-link codec
-packages/ui           design tokens, live-text primitive, controls
-apps/web              the application: store, panels, interactions
-tools/horizons        JPL ephemeris fetcher
-tools/bench           throughput harness
-tests/physics         cross-package fixtures: a real engine over real presets
-tests/e2e             Playwright
+packages/engine       worker, client, interpolation, the physics engine
+packages/renderer     WebGL2 and the camera
+packages/scenarios    presets, generators, share-link codec
+packages/ui           design tokens and controls
+apps/web              the application
 ```
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
+
+Solar system state vectors come from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/).
+The periodic three-body orbits are from Šuvakov and Dmitrašinović's 2013
+catalogue and the Chenciner and Montgomery figure-eight.

@@ -136,7 +136,7 @@ function Element({
     <div className="nb-row">
       <span className="nb-label">{label}</span>
       <span className="nb-num" aria-live="off" ref={readout.attach}>
-        &ndash;
+        -
       </span>
     </div>
   );

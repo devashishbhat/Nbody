@@ -14,7 +14,7 @@ simulation running with almost nothing on top of it.
 
 **One accent, and colour belongs to the bodies.** The chrome uses a single
 accent (`--accent`). Saturated colour anywhere else competes with the
-simulation, which is the thing the user is trying to read.
+simulation, which is the thing being read.
 
 **Every number is tabular.** Proportional digits change width as they change
 value, which reads as flicker in a readout updating sixty times a second. That
@@ -72,7 +72,7 @@ camera springs instant. Panel fades go to zero.
   values.
 - The body palette must stay distinguishable under deuteranopia and
   protanopia. The fallback palette in `@nbody/protocol` is a starting point,
-  not a verified set; Lane D and Lane E should check it.
+  not a verified set, and has not been checked against a simulator.
 - Every control is keyboard reachable, and the keyboard map is discoverable
   through the command palette rather than only documented.
 - Panels are landmarks with labels; readouts carry `aria-live="off"` because

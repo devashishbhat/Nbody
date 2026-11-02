@@ -3,11 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>N-Body</title>
+
+    <title>N-Body, an interactive gravity simulator</title>
     <meta
       name="description"
-      content="An interactive gravitational N-body simulator. Load the solar system or a classic three-body orbit and change anything."
+      content="Watch the real solar system, a periodic three-body orbit, or a galaxy collision. Change any mass, velocity or law of physics while it runs."
     />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta name="theme-color" content="#08080a" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!--
+      Sharing a system is a feature of this app, so links to it need to preview
+      properly. The image path is relative on purpose: the site is served from a
+      repository subdirectory on GitHub Pages and an absolute path would have to
+      hardcode the host.
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="N-Body, an interactive gravity simulator" />
+    <meta
+      property="og:description"
+      content="Watch the real solar system, a periodic three-body orbit, or a galaxy collision. Change any mass, velocity or law of physics while it runs."
+    />
+    <meta property="og:image" content="og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div id="root"></div>
