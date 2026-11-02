@@ -6,6 +6,7 @@ import {
   UNIT_LABELS,
   type FrameSample,
   type Scenario,
+  type Vec3,
 } from '@nbody/protocol';
 import { createWebGLRenderer, WebGLUnavailableError, type Renderer } from '@nbody/renderer';
 import {
@@ -18,7 +19,14 @@ import {
 import { useEffect, useRef } from 'react';
 import { attachInteractions, type InteractionHandles } from './interactions.ts';
 import type { Readouts } from './readouts.ts';
-import { attachEngine, LIVE_SAMPLE_HZ, setLiveSelected, setStatus, useStore } from './store.ts';
+import {
+  attachEngine,
+  LIVE_SAMPLE_HZ,
+  setLiveSelected,
+  setRenderOption,
+  setStatus,
+  useStore,
+} from './store.ts';
 
 export interface SimulationHandles {
   toggleDimension: () => void;
@@ -196,6 +204,14 @@ function writeDiagnostics(readouts: Readouts, sample: FrameSample, scenario: Sce
   );
 }
 
+/**
+ * How far the velocity drag handle reaches, as a fraction of the view height.
+ *
+ * Shared with the interaction layer through the render options, so what you
+ * can grab is exactly what you can see.
+ */
+const HANDLE_REACH = 0.3;
+
 /** Scratch, so the per-frame selection work allocates nothing. */
 const primaryPosition: [number, number, number] = [0, 0, 0];
 const primaryVelocity: [number, number, number] = [0, 0, 0];
@@ -210,6 +226,9 @@ const bodyVelocity: [number, number, number] = [0, 0, 0];
  * cheap, but there is no point computing them sixty times a second for a panel
  * a human is reading.
  */
+/** Selection the handle scale was last computed for. */
+let handleHandle = 0;
+
 function updateSelection(
   readouts: Readouts,
   sample: FrameSample,
@@ -221,6 +240,10 @@ function updateSelection(
 
   if (handle === 0 || !scenario) {
     setLiveSelected(null);
+    if (handleHandle !== 0) {
+      handleHandle = 0;
+      setRenderOption('velocityHandleScale', 0);
+    }
     return;
   }
 
@@ -237,16 +260,36 @@ function updateSelection(
   }
 
   const d = slot * 3;
+  const velocity: Vec3 = [
+    sample.velocities[d]!,
+    sample.velocities[d + 1]!,
+    sample.velocities[d + 2]!,
+  ];
   setLiveSelected({
     position: [sample.positions[d]!, sample.positions[d + 1]!, sample.positions[d + 2]!],
-    velocity: [sample.velocities[d]!, sample.velocities[d + 1]!, sample.velocities[d + 2]!],
+    velocity,
   });
 
-  // Elements are measured against the heaviest body present, which is what
-  // "the orbit of this planet" means in every system that has a dominant mass.
+  // Sized once per selection, not per sample. An arrow that resized itself as
+  // the body sped up would be impossible to aim, and computing it here rather
+  // than at the moment of the click is what makes it correct: at click time
+  // the live velocity has not been sampled yet, so the scale came out of a
+  // fallback and the handle sat almost on top of the body.
+  if (handleHandle !== handle) {
+    handleHandle = handle;
+    const speed = Math.hypot(velocity[0], velocity[1], velocity[2]);
+    const reach = renderer.camera.distance * HANDLE_REACH;
+    setRenderOption('velocityHandleScale', speed > 0 ? reach / speed : reach);
+  }
+
+  // Measured against the heaviest OTHER body, which is what "the orbit of this
+  // planet" means in a system with a dominant mass, and the only sensible
+  // answer in an equal-mass binary, where the heaviest body is the selected one
+  // and nothing orbits itself.
   let primarySlot = -1;
   let primaryMass = -Infinity;
   for (let i = 0; i < sample.count; i++) {
+    if (i === slot) continue;
     const index = renderer.indexOfHandle(sample.handles[i]!);
     if (index < 0) continue;
     const mass = scenario.bodies[index]!.mass;
@@ -257,7 +300,7 @@ function updateSelection(
   }
 
   const selectedIndex = renderer.indexOfHandle(handle);
-  if (primarySlot < 0 || primarySlot === slot || selectedIndex < 0) {
+  if (primarySlot < 0 || selectedIndex < 0) {
     clearOrbitReadouts(readouts);
     return;
   }

@@ -133,7 +133,11 @@ export const useStore = create<AppState>(() => ({
   playing: true,
   reversed: false,
   options: { ...DEFAULT_RENDER_OPTIONS },
-  inspectorOpen: true,
+  // Closed on a narrow screen: there it is a sheet over the simulation rather
+  // than a column beside it, so opening by default would hide the thing the
+  // page is for.
+  inspectorOpen:
+    typeof window === 'undefined' ? true : window.matchMedia('(width > 720px)').matches,
   paletteOpen: false,
   helpOpen: false,
   status: null,
@@ -183,7 +187,13 @@ export function resetScenario(): void {
 }
 
 export function selectHandle(handle: number, bodyId: string | null): void {
+  // On a narrow screen the inspector is a sheet, so selecting a body is also
+  // the request to see it.
+  const openSheet =
+    handle !== 0 && typeof window !== 'undefined' && !window.matchMedia('(width > 720px)').matches;
+
   set({
+    ...(openSheet ? { inspectorOpen: true } : {}),
     selectedHandle: handle,
     selectedBodyId: bodyId,
     options: { ...get().options, selectedHandle: handle },

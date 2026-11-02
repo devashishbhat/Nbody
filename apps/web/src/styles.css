@@ -424,27 +424,42 @@ body.nb-active .nb-panel {
   border-color: color-mix(in srgb, var(--error) 45%, transparent);
 }
 
-/* Narrow screens: the inspector becomes a sheet and the panels stack. */
-
+/**
+ * Narrow screens.
+ *
+ * The desktop layout puts a panel in each corner, which on a phone leaves no
+ * canvas at all. Here the simulation keeps the upper half of the screen and
+ * the controls stack below it: the scenario at the top, a compact readout
+ * beside it, the transport pinned to the bottom, and the inspector as a sheet
+ * that slides over the lower half only when it is wanted.
+ */
 @media (width <= 720px) {
-  .nb-right {
-    top: auto;
-    right: var(--space-2);
-    bottom: 150px;
-    left: var(--space-2);
-    width: auto;
-    max-height: 45vh;
-  }
-
   .nb-top-left {
-    max-width: calc(100vw - 32px);
+    top: var(--space-2);
+    left: var(--space-2);
+    max-width: calc(100vw - 150px);
+    padding: var(--space-2) var(--space-3);
   }
 
-  .nb-bottom-left {
-    bottom: 84px;
-    left: var(--space-2);
-    min-width: 0;
+  .nb-description,
+  .nb-watch {
     font-size: var(--text-xs);
+  }
+
+  /* Only the two numbers worth having at this size: whether the simulation is
+     still trustworthy, and whether it is keeping up. */
+  .nb-bottom-left {
+    top: var(--space-2);
+    right: var(--space-2);
+    bottom: auto;
+    left: auto;
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+  }
+
+  .nb-bottom-left .nb-row:not(:first-child):not(:nth-child(6)) {
+    display: none;
   }
 
   .nb-bottom-center {
@@ -453,6 +468,40 @@ body.nb-active .nb-panel {
     left: var(--space-2);
     flex-wrap: wrap;
     justify-content: center;
+    padding: var(--space-2);
     transform: none;
+  }
+
+  .nb-transport-speed {
+    order: 1;
+    width: 100%;
+  }
+
+  /* A sheet over the lower half, so the simulation stays visible above it. */
+  .nb-right {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-height: 52vh;
+    padding-bottom: 104px;
+    border-right: none;
+    border-bottom: none;
+    border-left: none;
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+
+  .nb-collapsed {
+    top: auto;
+    right: var(--space-2);
+    bottom: 104px;
+    left: auto;
+    width: auto;
+    border-radius: var(--radius);
+  }
+
+  .nb-overlay {
+    padding-top: 8vh;
   }
 }

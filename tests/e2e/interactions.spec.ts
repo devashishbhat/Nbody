@@ -165,3 +165,35 @@ test('switches to the orbiting camera', async ({ page }) => {
   await page.waitForTimeout(300);
   expect(await cameraMode(page)).toBe('3d');
 });
+
+test.describe('narrow screens', () => {
+  test.use({ viewport: { width: 430, height: 850 } });
+
+  test('keeps the simulation visible and opens the inspector on selection', async ({ page }) => {
+    await ready(page);
+
+    // The inspector is a sheet over the simulation here rather than a column
+    // beside it, so it must not be covering half the screen before anyone has
+    // asked for it.
+    await expect(page.locator('.nb-inspector')).toBeHidden();
+    await expect(page.locator('.nb-collapsed')).toBeVisible();
+
+    // Selecting a body is also the request to see it.
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+    const point = await page.evaluate(() => {
+      const renderer = window.nbody!.renderer;
+      const position = new Float64Array(3);
+      const screen = new Float64Array(2);
+      renderer.positionOf(0, position);
+      renderer.camera.project(position[0]!, position[1]!, position[2]!, screen);
+      return { x: screen[0]!, y: screen[1]! };
+    });
+    await page.mouse.click(box.x + point.x, box.y + point.y);
+
+    await expect(page.locator('.nb-inspector')).toBeVisible();
+    await expect(page.locator('.nb-inspector-bar .nb-label')).toHaveText('Body');
+
+    // And the transport is still reachable with the sheet open.
+    await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible();
+  });
+});

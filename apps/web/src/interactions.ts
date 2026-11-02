@@ -6,7 +6,6 @@ import {
   editBodyState,
   getEngine,
   selectHandle,
-  setRenderOption,
   setStatus,
   useStore,
 } from './store.ts';
@@ -34,8 +33,13 @@ import {
 /** Pixels of movement before a press counts as a drag rather than a click. */
 const DRAG_THRESHOLD = 3;
 
-/** How far the velocity arrow reaches, as a fraction of the view height. */
-const HANDLE_REACH = 0.3;
+/**
+ * How far a slingshot drag reaches, as a fraction of the view height.
+ *
+ * Matches the velocity handle's reach, so aiming a new body and re-aiming an
+ * existing one feel like the same gesture.
+ */
+const SPAWN_REACH = 0.3;
 
 /** Pixels within which the velocity tip can be grabbed. */
 const HANDLE_GRAB_RADIUS = 18;
@@ -51,8 +55,6 @@ type Mode =
 
 export interface InteractionHandles {
   detach: () => void;
-  /** Recomputes the velocity handle scale. Called when the selection changes. */
-  refreshHandle: () => void;
 }
 
 export function attachInteractions(
@@ -64,8 +66,18 @@ export function attachInteractions(
   const position = new Float64Array(3);
 
   let mode: Mode = { kind: 'none' };
-  let handleScale = 0;
   let spawnPreviewId: string | null = null;
+
+  /**
+   * The velocity handle's world-units-per-velocity scale.
+   *
+   * Owned by the render loop, which has the live velocity and the camera in
+   * hand at the same moment, and read here so that hit-testing uses exactly
+   * the scale the arrow was drawn at.
+   */
+  function handleScale(): number {
+    return useStore.getState().options.velocityHandleScale;
+  }
 
   function scenario(): Scenario {
     return useStore.getState().scenario;
@@ -78,30 +90,6 @@ export function attachInteractions(
     return index >= 0 && index < bodies.length ? bodies[index]!.id : null;
   }
 
-  /**
-   * Chooses how long the velocity arrow is.
-   *
-   * Fixed so that the arrow starts at a comfortable fraction of the view and
-   * then scales linearly with the velocity, which makes dragging it twice as
-   * far mean twice the speed. Recomputed on selection rather than per frame,
-   * because an arrow that resized itself as the body sped up would be
-   * impossible to aim.
-   */
-  function refreshHandle(): void {
-    const state = useStore.getState();
-    if (state.selectedHandle === 0) {
-      handleScale = 0;
-      setRenderOption('velocityHandleScale', 0);
-      return;
-    }
-    const live = state.liveSelected;
-    const velocity = live?.velocity;
-    const speed = velocity ? Math.hypot(velocity[0], velocity[1], velocity[2]) : 0;
-    const reach = renderer.camera.distance * HANDLE_REACH;
-    handleScale = speed > 0 ? reach / speed : reach;
-    setRenderOption('velocityHandleScale', handleScale);
-  }
-
   function pointerOffset(event: PointerEvent): [number, number] {
     const rect = canvas.getBoundingClientRect();
     return [event.clientX - rect.left, event.clientY - rect.top];
@@ -110,13 +98,14 @@ export function attachInteractions(
   /** True when the pointer is on the selected body's velocity tip. */
   function onVelocityHandle(x: number, y: number): boolean {
     const state = useStore.getState();
-    if (state.selectedHandle === 0 || handleScale === 0) return false;
+    const scale = handleScale();
+    if (state.selectedHandle === 0 || scale === 0) return false;
     const live = state.liveSelected;
     if (!live) return false;
 
-    const tipX = live.position[0] + live.velocity[0] * handleScale;
-    const tipY = live.position[1] + live.velocity[1] * handleScale;
-    const tipZ = live.position[2] + live.velocity[2] * handleScale;
+    const tipX = live.position[0] + live.velocity[0] * scale;
+    const tipY = live.position[1] + live.velocity[1] * scale;
+    const tipZ = live.position[2] + live.velocity[2] * scale;
     if (!renderer.camera.project(tipX, tipY, tipZ, screen)) return false;
 
     return Math.hypot(screen[0]! - x, screen[1]! - y) <= HANDLE_GRAB_RADIUS;
@@ -137,7 +126,7 @@ export function attachInteractions(
       const id = state.selectedBodyId;
       const live = state.liveSelected;
       if (id && live) {
-        mode = { kind: 'velocity', id, from: live.velocity, scale: handleScale };
+        mode = { kind: 'velocity', id, from: live.velocity, scale: handleScale() };
         return;
       }
     }
@@ -231,7 +220,7 @@ export function attachInteractions(
     // Dragging away from the start sets the velocity, like pulling back a
     // slingshot. The divisor converts a screen-sized drag into a speed
     // comparable with what is already on screen.
-    const reach = renderer.camera.distance * HANDLE_REACH;
+    const reach = renderer.camera.distance * SPAWN_REACH;
     const velocity: Vec3 = [(world[0]! - origin[0]) / reach, (world[1]! - origin[1]) / reach, 0];
 
     if (spawnPreviewId === null) {
@@ -258,12 +247,9 @@ export function attachInteractions(
     if (mode.kind === 'press') {
       // A press that never became a drag is a click: select, or clear.
       if (mode.slot >= 0) {
-        const handle = renderer.handleOf(mode.slot);
-        selectHandle(handle, bodyIdOfSlot(mode.slot));
-        refreshHandle();
+        selectHandle(renderer.handleOf(mode.slot), bodyIdOfSlot(mode.slot));
       } else {
         clearSelection();
-        setRenderOption('velocityHandleScale', 0);
       }
     }
 
@@ -301,7 +287,6 @@ export function attachInteractions(
   canvas.addEventListener('contextmenu', onContextMenu);
 
   return {
-    refreshHandle,
     detach() {
       canvas.removeEventListener('pointerdown', onPointerDown);
       canvas.removeEventListener('pointermove', onPointerMove);

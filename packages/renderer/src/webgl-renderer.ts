@@ -725,8 +725,8 @@ export class WebGLRenderer implements Renderer {
     const selectedSlot = this.slotOfHandle(sample, this.renderOptions.selectedHandle);
     if (selectedSlot < 0) return startOffset;
 
-    const primarySlot = this.dominantSlot(sample);
-    if (primarySlot < 0 || primarySlot === selectedSlot) return startOffset;
+    const primarySlot = this.dominantSlot(sample, selectedSlot);
+    if (primarySlot < 0) return startOffset;
 
     const primaryIndex = this.appearanceIndex(sample.handles[primarySlot]!);
     const selectedIndex = this.appearanceIndex(sample.handles[selectedSlot]!);
@@ -825,10 +825,19 @@ export class WebGLRenderer implements Renderer {
     return offset;
   }
 
-  private dominantSlot(sample: FrameSample): number {
+  /**
+   * The heaviest body other than `exclude`.
+   *
+   * Excluding the body itself matters for an equal-mass binary, where the
+   * heaviest body IS the selected one and asking what it orbits would
+   * otherwise have no answer. Its companion is the right answer there, and for
+   * a planet around a star the exclusion changes nothing.
+   */
+  private dominantSlot(sample: FrameSample, exclude: number): number {
     let best = -1;
     let bestMass = -Infinity;
     for (let i = 0; i < sample.count; i++) {
+      if (i === exclude) continue;
       const index = this.appearanceIndex(sample.handles[i]!);
       if (index < 0) continue;
       const mass = this.scenarioMasses[index]!;

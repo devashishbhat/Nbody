@@ -12,7 +12,12 @@ interface NbodyHandle {
     snapshot: () => Promise<Scenario>;
   };
   renderer: {
-    camera: { distance: number; mode: '2d' | '3d' };
+    camera: {
+      distance: number;
+      mode: '2d' | '3d';
+      project: (x: number, y: number, z: number, out: Float64Array) => boolean;
+    };
+    positionOf: (slot: number, out: Float64Array) => boolean;
     debugStats: () => {
       trails: number;
       trailSamples: number;
