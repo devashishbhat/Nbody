@@ -44,6 +44,12 @@ const SPAWN_REACH = 0.3;
 /** Pixels within which the velocity tip can be grabbed. */
 const HANDLE_GRAB_RADIUS = 18;
 
+/** A pause longer than this starts a new wheel gesture. */
+const GESTURE_GAP_MS = 180;
+
+/** Below this, a vertical-only scroll is taken to be a trackpad, not a wheel. */
+const MOUSE_WHEEL_DELTA = 50;
+
 type Mode =
   | { kind: 'none' }
   | { kind: 'press'; startX: number; startY: number; slot: number }
@@ -79,6 +85,10 @@ export function attachInteractions(
    */
   let lastX = 0;
   let lastY = 0;
+
+  /** Wheel gesture state. See `onWheel`. */
+  let lastWheelMs = 0;
+  let gestureIsPan = false;
 
   /**
    * The velocity handle's world-units-per-velocity scale.
@@ -125,7 +135,14 @@ export function attachInteractions(
 
   function onPointerDown(event: PointerEvent): void {
     if (event.button !== 0) return;
-    canvas.setPointerCapture(event.pointerId);
+    // Capture is a nicety, not a dependency: the move and up handlers are on
+    // the window, so a drag survives whether or not this succeeds. Some
+    // browsers throw here for a pointer that is already captured elsewhere.
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch {
+      // Ignored on purpose. See above.
+    }
     const [x, y] = pointerOffset(event);
     lastX = x;
     lastY = y;
@@ -150,6 +167,9 @@ export function attachInteractions(
   }
 
   function onPointerMove(event: PointerEvent): void {
+    // These listen on the window, so most moves are not part of a drag.
+    if (mode.kind === 'none') return;
+
     const [x, y] = pointerOffset(event);
     const deltaX = x - lastX;
     const deltaY = y - lastY;
@@ -264,6 +284,7 @@ export function attachInteractions(
   }
 
   function onPointerUp(event: PointerEvent): void {
+    if (mode.kind === 'none') return;
     const [x, y] = pointerOffset(event);
 
     if (mode.kind === 'press') {
@@ -284,18 +305,55 @@ export function attachInteractions(
     spawnPreviewId = null;
     mode = { kind: 'none' };
     canvas.style.cursor = '';
-    if (canvas.hasPointerCapture(event.pointerId)) {
-      canvas.releasePointerCapture(event.pointerId);
+    try {
+      if (canvas.hasPointerCapture(event.pointerId)) {
+        canvas.releasePointerCapture(event.pointerId);
+      }
+    } catch {
+      // Ignored: releasing a capture that is already gone is not an error
+      // worth propagating out of a pointerup handler.
     }
   }
 
+  /**
+   * Wheel handling, which has to serve two very different input devices.
+   *
+   * A mouse wheel means zoom. A trackpad two-finger scroll means pan, and
+   * treating it as zoom is most of what makes this app feel undraggable on a
+   * laptop: the gesture people reach for to move around the view instead
+   * rockets them in and out.
+   *
+   * The two are distinguishable in practice. A pinch arrives with ctrlKey set,
+   * which every browser synthesises. A two-axis scroll has a non-zero deltaX,
+   * which a wheel never does. Vertical-only scrolling is the ambiguous case,
+   * and there a trackpad sends many small fractional deltas where a wheel
+   * sends few large ones in multiples of about a hundred.
+   *
+   * The decision is made once per gesture and held, because the magnitude of a
+   * trackpad scroll varies within a single flick and a per-event rule would
+   * flip from panning to zooming halfway through one.
+   */
   function onWheel(event: WheelEvent): void {
     event.preventDefault();
     const rect = canvas.getBoundingClientRect();
-    // Exponential in the scroll delta, so a trackpad flick and a mouse notch
-    // both feel proportional rather than one being unusable.
-    const factor = Math.exp(-event.deltaY * 0.0022);
-    renderer.camera.zoomBy(factor, event.clientX - rect.left, event.clientY - rect.top);
+
+    const now = performance.now();
+    if (now - lastWheelMs > GESTURE_GAP_MS) {
+      gestureIsPan =
+        event.deltaX !== 0 || (event.deltaMode === 0 && Math.abs(event.deltaY) < MOUSE_WHEEL_DELTA);
+    }
+    lastWheelMs = now;
+
+    // A pinch always zooms, whatever the rest of the gesture was doing.
+    if (event.ctrlKey || !gestureIsPan) {
+      const factor = Math.exp(-event.deltaY * 0.0022);
+      renderer.camera.zoomBy(factor, event.clientX - rect.left, event.clientY - rect.top);
+      return;
+    }
+
+    // Scrolling moves the view the way the content should go, which is the
+    // opposite of the scroll direction, matching every map and canvas app.
+    renderer.camera.panBy(-event.deltaX, -event.deltaY);
   }
 
   function onContextMenu(event: Event): void {
@@ -303,18 +361,21 @@ export function attachInteractions(
   }
 
   canvas.addEventListener('pointerdown', onPointerDown);
-  canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerUp);
+  // Move and up go on the window, not the canvas. A drag then continues when
+  // the pointer crosses a panel or leaves the window entirely, and it does not
+  // depend on pointer capture having been granted.
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', onContextMenu);
 
   return {
     detach() {
       canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', onPointerUp);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
     },

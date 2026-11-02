@@ -162,6 +162,8 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'Drag a body', action: 'Move it' },
   { keys: 'Drag the arrow tip', action: 'Change its velocity' },
   { keys: 'Shift + drag', action: 'Sling a new body' },
-  { keys: 'Scroll', action: 'Zoom where the pointer is' },
+  { keys: 'Scroll (mouse)', action: 'Zoom where the pointer is' },
+  { keys: 'Two-finger scroll', action: 'Pan the view' },
+  { keys: 'Pinch', action: 'Zoom' },
   { keys: 'Escape', action: 'Deselect, or close' },
 ];

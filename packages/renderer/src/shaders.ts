@@ -20,12 +20,6 @@ vec4 offsetByPixels(vec4 clip, vec2 pixels, vec2 viewport) {
  * and perfectly antialiased at any zoom, which a textured sprite does not, and
  * it costs no texture fetch.
  *
- * Bodies are shaded as spheres rather than filled as discs. The billboard's
- * surface normal is recovered from the fragment's position within the disc,
- * which costs one square root and gives a correct terminator, a lit rim, and
- * limb darkening on the star. It is the difference between a diagram and
- * something that looks like it is in space.
- *
  * Size mapping is in the vertex shader because it depends on the projected
  * depth. `pixelsPerWorld = proj11 * viewportHeight / (2 * clip.w)` happens to
  * be correct for both projections: in orthographic, clip.w is 1 and proj11 is
@@ -40,17 +34,10 @@ layout(location = 1) in vec3 aCenter;
 layout(location = 2) in float aRadius;
 layout(location = 3) in vec3 aColor;
 layout(location = 4) in float aSelected;
-layout(location = 5) in float aEmissive;
 
 uniform mat4 uViewProjection;
-uniform mat4 uView;
 uniform vec2 uViewport;
 uniform float uProj11;
-
-/** Render-space position of the system's star. */
-uniform vec3 uLightPosition;
-/** 0 when the system has no dominant mass to light it. */
-uniform float uShading;
 
 uniform int uRadiusMode;
 uniform float uMinPx;
@@ -64,9 +51,6 @@ out vec2 vOffsetPx;
 out vec3 vColor;
 out float vRadiusPx;
 out float vSelected;
-out float vEmissive;
-/** Direction to the star, in view space, where the billboard's normal lives. */
-out vec3 vLightDir;
 
 ${SCREEN_OFFSET}
 
@@ -103,16 +87,6 @@ void main() {
   vOffsetPx = aCorner * extent;
   vColor = aColor;
   vSelected = aSelected;
-  vEmissive = aEmissive;
-
-  // The billboard's surface normal is expressed in view space, so the light
-  // direction has to be too. Only the rotation of the view matrix matters for
-  // a direction, which is what mat3 takes.
-  vec3 toLight = uLightPosition - aCenter;
-  float reach = length(toLight);
-  // The star is at its own centre, so normalising there would be a division by
-  // zero. It is drawn emissive anyway and never reads this.
-  vLightDir = reach > 0.0 ? normalize(mat3(uView) * toLight) : vec3(0.0, 0.0, 1.0);
 
   gl_Position = offsetByPixels(clip, vOffsetPx, uViewport);
 }
@@ -125,11 +99,8 @@ in vec2 vOffsetPx;
 in vec3 vColor;
 in float vRadiusPx;
 in float vSelected;
-in float vEmissive;
-in vec3 vLightDir;
 
 uniform vec3 uSelectionColor;
-uniform float uShading;
 
 out vec4 outColor;
 
@@ -140,56 +111,13 @@ void main() {
   // already in pixels.
   float disc = 1.0 - smoothstep(vRadiusPx - 0.75, vRadiusPx + 0.75, d);
 
-  // Position on the disc, which for a camera-facing billboard is also the
-  // sphere's surface: a unit disc maps to the visible hemisphere, with the
-  // normal's z recovered from the other two components. This is what turns a
-  // flat circle into something that reads as a ball.
-  vec2 p = vOffsetPx / max(vRadiusPx, 0.001);
-  float r2 = min(dot(p, p), 1.0);
-  vec3 normal = vec3(p, sqrt(1.0 - r2));
-
-  vec3 surface;
-  float glowStrength;
-
-  if (uShading < 0.5 || vEmissive > 0.5) {
-    // A star, or a system with no dominant mass to light it. Stars are not
-    // lit from outside, but they are not flat either: a real one is dimmer
-    // toward the edge, because there you look obliquely through the
-    // photosphere and see a cooler, higher layer. The usual linear limb
-    // darkening law is enough to read as a sphere rather than a disc.
-    float mu = normal.z;
-    float limb = uShading < 0.5 ? 1.0 : 0.62 + 0.38 * mu;
-    surface = vColor * limb;
-    glowStrength = 0.30;
-  } else {
-    // Lit from the star. The terminator is the single strongest cue that
-    // these are spheres in space rather than circles on a screen.
-    float lambert = max(dot(normal, vLightDir), 0.0);
-
-    // Ambient, because a pure black night side on a body a few pixels across
-    // reads as a bite taken out of the disc rather than as shadow. Higher
-    // than physical realism would suggest for the same reason: at this scale
-    // legibility and plausibility are both served by letting the dark side
-    // stay faintly visible.
-    float lit = 0.14 + 0.86 * lambert;
-
-    // A bright edge where the surface turns away from the camera but still
-    // faces the star, which is what makes a lit sphere look like one.
-    float rim = pow(1.0 - normal.z, 3.5) * lambert * 0.5;
-
-    surface = vColor * lit + vColor * rim;
-    // Planets are not light sources. Giving them the same halo as a star is
-    // most of what made every body look like a glowing dot.
-    glowStrength = 0.10;
-  }
-
   // A short exponential halo. Scaled by the body's own size so a star glows
   // and a pebble does not, and floored so the smallest bodies stay visible.
   float falloff = max(vRadiusPx * 0.55, 1.2);
-  float glow = exp(-max(d - vRadiusPx, 0.0) / falloff) * glowStrength;
+  float glow = exp(-max(d - vRadiusPx, 0.0) / falloff) * 0.30;
 
   float alpha = clamp(disc + glow, 0.0, 1.0);
-  vec3 color = surface * disc + vColor * glow * 0.85;
+  vec3 color = vColor * (disc + glow * 0.85);
 
   if (vSelected > 0.5) {
     float ringRadius = vRadiusPx + 4.0;

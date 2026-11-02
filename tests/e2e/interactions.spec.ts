@@ -295,3 +295,84 @@ test.describe('camera controls are reachable', () => {
     expect(await cameraMode(page)).toBe('3d');
   });
 });
+
+test.describe('moving around the view', () => {
+  async function origin(page: Page) {
+    return page.evaluate(() => ({
+      x: window.nbody!.renderer.camera.originX,
+      y: window.nbody!.renderer.camera.originY,
+      distance: window.nbody!.renderer.camera.distance,
+    }));
+  }
+
+  test('drags the view by exactly the distance dragged', async ({ page }) => {
+    await ready(page);
+    const before = await origin(page);
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+
+    // Empty canvas, clear of the bodies and every panel.
+    await page.mouse.move(box.x + 400, box.y + 620);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + 400 + i * 15, box.y + 620);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    const after = await origin(page);
+    // 150 pixels right moves the view 150 pixels' worth of world to the left.
+    // The scale comes from the viewport rather than a constant, because the
+    // half-height is defined against the viewport height and hardcoding it
+    // here just tests the test.
+    const height = page.viewportSize()!.height;
+    const worldPerPixel = (2 * before.distance) / height;
+    expect(before.x - after.x).toBeCloseTo(150 * worldPerPixel, 4);
+  });
+
+  test('keeps dragging when the pointer crosses a panel', async ({ page }) => {
+    // The handlers live on the window rather than the canvas, so a drag that
+    // wanders over the inspector or off the edge does not simply stop.
+    await ready(page);
+    const before = await origin(page);
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+
+    await page.mouse.move(box.x + 700, box.y + 400);
+    await page.mouse.down();
+    // Straight into the inspector column on the right.
+    for (let i = 1; i <= 10; i++) await page.mouse.move(box.x + 700 + i * 40, box.y + 400);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    expect(Math.abs((await origin(page)).x - before.x)).toBeGreaterThan(0);
+  });
+
+  test('pans on a trackpad two-finger scroll', async ({ page }) => {
+    // A two-axis scroll is a trackpad, and on a trackpad this gesture means
+    // move the view. Treating it as zoom is most of what made the app feel
+    // undraggable on a laptop.
+    await ready(page);
+    const before = await origin(page);
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+    await page.mouse.move(box.x + 500, box.y + 400);
+
+    for (let i = 0; i < 8; i++) await page.mouse.wheel(12, 6);
+    await page.waitForTimeout(300);
+
+    const after = await origin(page);
+    expect(after.x).not.toBeCloseTo(before.x, 6);
+    expect(after.y).not.toBeCloseTo(before.y, 6);
+    // And it did not zoom.
+    expect(after.distance).toBeCloseTo(before.distance, 6);
+  });
+
+  test('still zooms on a mouse wheel', async ({ page }) => {
+    await ready(page);
+    const before = await origin(page);
+    const box = (await page.locator('canvas.nb-canvas').boundingBox())!;
+    await page.mouse.move(box.x + 500, box.y + 400);
+
+    // A wheel notch: vertical only, and large.
+    for (let i = 0; i < 5; i++) await page.mouse.wheel(0, -120);
+    await page.waitForTimeout(400);
+
+    expect((await origin(page)).distance).toBeLessThan(before.distance * 0.8);
+  });
+});
