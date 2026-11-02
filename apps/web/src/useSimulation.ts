@@ -21,15 +21,16 @@ import { attachInteractions, type InteractionHandles } from './interactions.ts';
 import type { Readouts } from './readouts.ts';
 import {
   attachEngine,
+  attachView,
   LIVE_SAMPLE_HZ,
   setLiveSelected,
   setRenderOption,
   setStatus,
+  syncCameraMode,
   useStore,
 } from './store.ts';
 
 export interface SimulationHandles {
-  toggleDimension: () => void;
   toggleFollow: () => void;
 }
 
@@ -79,15 +80,18 @@ export function useSimulation(
     const interactions = attachInteractions(canvas, renderer);
     interactionsRef.current = interactions;
 
-    handlesRef.current = {
-      toggleDimension() {
-        renderer.camera.setMode(renderer.camera.mode === '2d' ? '3d' : '2d');
-      },
-      toggleFollow() {
-        const handle = useStore.getState().selectedHandle;
-        renderer.camera.follow(renderer.camera.following === handle ? 0 : handle);
-      },
+    const toggleFollow = () => {
+      const handle = useStore.getState().selectedHandle;
+      renderer.camera.follow(renderer.camera.following === handle ? 0 : handle);
     };
+
+    handlesRef.current = { toggleFollow };
+    attachView({
+      setCameraMode: (mode) => renderer.camera.setMode(mode),
+      toggleFollow,
+      isFollowing: () => renderer.camera.following !== 0,
+    });
+    syncCameraMode(renderer.camera.mode);
 
     const unsubscribeError = client.onError((message, fatal) => {
       setStatus(message, fatal ? 'error' : 'warn');
@@ -160,6 +164,10 @@ export function useSimulation(
 
       renderer.draw(sample, nowMs);
 
+      // Loading a scenario can change the mode without the interface asking,
+      // so the mirror is kept honest here rather than only on user action.
+      syncCameraMode(renderer.camera.mode);
+
       const scenario = useStore.getState().scenario;
       if (scenario) writeDiagnostics(readouts, sample, scenario);
 
@@ -181,6 +189,7 @@ export function useSimulation(
       renderer.dispose();
       client.dispose();
       attachEngine(null);
+      attachView(null);
       rendererRef.current = null;
       interactionsRef.current = null;
       handlesRef.current = null;

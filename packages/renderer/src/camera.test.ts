@@ -203,3 +203,113 @@ describe('modes', () => {
     }
   });
 });
+
+describe('direct manipulation', () => {
+  /**
+   * Dragging and following must not go through the easing.
+   *
+   * Easing is right when the camera is moving on its own, after a wheel notch
+   * or a programmatic jump. It is wrong whenever something is being held or
+   * tracked, because the lag means the thing is never where it should be. At a
+   * wide view that reads as sluggishness; at a close one the subject leaves the
+   * screen entirely.
+   */
+  it('pans by exactly the dragged distance, with no lag', () => {
+    const camera = make(1200, 800);
+    const worldPerPixel = (2 * camera.distance) / 800;
+
+    const before = camera.originX;
+    camera.panBy(100, 0);
+
+    // Before `update` runs. A camera that only moved its target would still
+    // be sitting where it started here, and the content would trail the
+    // pointer for the whole drag.
+    expect(before - camera.originX).toBeCloseTo(100 * worldPerPixel, 9);
+  });
+
+  it('does not drift after the drag ends', () => {
+    const camera = make(1200, 800);
+    camera.panBy(100, -40);
+    const settledX = camera.originX;
+    const settledY = camera.originY;
+
+    settle(camera);
+
+    // Current and target were moved together, so there is nothing left to
+    // ease toward and the view stays where it was released.
+    expect(camera.originX).toBeCloseTo(settledX, 12);
+    expect(camera.originY).toBeCloseTo(settledY, 12);
+  });
+
+  it('orbits immediately in 3D', () => {
+    const camera = make();
+    camera.setMode('3d');
+    settle(camera);
+    const before = camera.viewProjection.slice();
+
+    camera.orbitBy(0.4, 0.1);
+    camera.update(0);
+
+    expect([...camera.viewProjection]).not.toEqual([...before]);
+  });
+
+  it('centres a followed body exactly', () => {
+    // The case that exposed this: following a body while zoomed in far enough
+    // to see its disc. An eased camera is thousands of view-widths behind.
+    const camera = make(1200, 800);
+    camera.snapTo(0, 0, 0, 1e-4, '2d');
+    camera.follow(7);
+
+    const screen = new Float64Array(2);
+    for (let step = 0; step < 50; step++) {
+      // A body crossing many view-widths per frame.
+      const x = step * 0.05;
+      camera.trackFollowed(x, -x * 0.3, 0);
+      camera.update(1 / 60);
+
+      expect(camera.project(x, -x * 0.3, 0, screen)).toBe(true);
+      expect(screen[0]).toBeCloseTo(600, 6);
+      expect(screen[1]).toBeCloseTo(400, 6);
+    }
+  });
+});
+
+describe('zoom and follow are independent', () => {
+  it('keeps following while zooming', () => {
+    // Anchoring zoom at the cursor drags the target off the followed body, so
+    // it used to cancel the follow. Zooming in on the thing you asked to
+    // follow then lost it, which is the opposite of what the gesture means.
+    const camera = make();
+    camera.follow(42);
+
+    camera.zoomBy(2, 900, 150);
+    settle(camera);
+
+    expect(camera.following).toBe(42);
+  });
+
+  it('still anchors at the cursor when not following', () => {
+    const camera = make();
+    const cursorX = 950;
+    const cursorY = 220;
+
+    camera.unproject2d(cursorX, cursorY, point);
+    const before = [point[0], point[1]] as const;
+
+    camera.zoomBy(4, cursorX, cursorY);
+    settle(camera);
+
+    camera.unproject2d(cursorX, cursorY, point);
+    expect(point[0]).toBeCloseTo(before[0], 9);
+    expect(point[1]).toBeCloseTo(before[1], 9);
+  });
+
+  it('still zooms toward the body while following', () => {
+    const camera = make();
+    camera.follow(42);
+    const before = camera.distance;
+    camera.zoomBy(4, 900, 150);
+    settle(camera);
+    expect(camera.distance).toBeCloseTo(before / 4, 9);
+  });
+});

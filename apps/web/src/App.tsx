@@ -23,14 +23,11 @@ import { useSimulation } from './useSimulation.ts';
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const readouts = useReadouts();
-  const handles = useSimulation(canvasRef, readouts);
+  useSimulation(canvasRef, readouts);
   const ready = useStore((state) => state.scenario !== undefined);
 
   useIdleChrome();
-  useKeyboard({
-    toggleDimension: () => handles.current?.toggleDimension(),
-    toggleFollow: () => handles.current?.toggleFollow(),
-  });
+  useKeyboard();
 
   // The hash decides what loads, so a share link opens the system it names
   // rather than the default and then jumping.

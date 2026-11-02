@@ -7,7 +7,7 @@ import {
   type ScenarioSettings,
   type Vec3,
 } from '@nbody/protocol';
-import { DEFAULT_RENDER_OPTIONS, type RenderOptions } from '@nbody/renderer';
+import { DEFAULT_RENDER_OPTIONS, type CameraMode, type RenderOptions } from '@nbody/renderer';
 import { buildHash, matchesPreset, tooLargeToShare, getPreset } from '@nbody/scenarios';
 import { create } from 'zustand';
 
@@ -90,6 +90,16 @@ export interface AppState {
   reversed: boolean;
 
   options: RenderOptions;
+
+  /**
+   * Mirror of the renderer's camera mode.
+   *
+   * The camera belongs to the renderer, which is not reactive, but the
+   * interface has to show which mode is active. The render loop pushes the
+   * value here when it changes, which is rare, and changes made here are
+   * routed back through the view handle.
+   */
+  cameraMode: CameraMode;
   inspectorOpen: boolean;
   paletteOpen: boolean;
   helpOpen: boolean;
@@ -117,7 +127,19 @@ export const LIVE_SAMPLE_HZ = 5;
 /** Undo depth. Deep enough to be useful, bounded so it cannot grow forever. */
 const HISTORY_LIMIT = 200;
 
+export interface ViewHandles {
+  setCameraMode: (mode: CameraMode) => void;
+  toggleFollow: () => void;
+  isFollowing: () => boolean;
+}
+
 let client: EngineClient | null = null;
+let view: ViewHandles | null = null;
+
+/** Called once by the render loop, which owns the renderer's lifetime. */
+export function attachView(next: ViewHandles | null): void {
+  view = next;
+}
 
 /** Called once by the render loop, which owns the worker's lifetime. */
 export function attachEngine(next: EngineClient | null): void {
@@ -144,6 +166,7 @@ export const useStore = create<AppState>(() => ({
   playing: true,
   reversed: false,
   options: { ...DEFAULT_RENDER_OPTIONS },
+  cameraMode: '2d',
   // Closed on a narrow screen: there it is a sheet over the simulation rather
   // than a column beside it, so opening by default would hide the thing the
   // page is for.
@@ -244,6 +267,24 @@ export function toggleReverse(): void {
   const dt = -scenario.dt;
   set({ scenario: { ...scenario, dt }, reversed: dt < 0 });
   client?.setDt(dt);
+}
+
+export function setCameraMode(mode: CameraMode): void {
+  view?.setCameraMode(mode);
+  set({ cameraMode: mode });
+}
+
+export function toggleCameraMode(): void {
+  setCameraMode(get().cameraMode === '2d' ? '3d' : '2d');
+}
+
+/** Called by the render loop when the renderer changed the mode itself. */
+export function syncCameraMode(mode: CameraMode): void {
+  if (get().cameraMode !== mode) set({ cameraMode: mode });
+}
+
+export function toggleFollow(): void {
+  view?.toggleFollow();
 }
 
 export function setRenderOption<K extends keyof RenderOptions>(

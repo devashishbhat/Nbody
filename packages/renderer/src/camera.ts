@@ -187,6 +187,12 @@ export class Camera implements CameraController {
 
     if (this.mode !== '2d') return;
 
+    // While following a body, zoom goes toward that body and the follow
+    // survives. Anchoring at the cursor would drag the target off the body and
+    // then cancel the follow, so zooming in on the thing you asked to follow
+    // would lose it, which is the opposite of what the gesture means.
+    if (this.followHandle !== 0) return;
+
     // Offset of the cursor from the viewport centre, in pixels.
     const dx = anchorClientX - this.width / 2;
     const dy = anchorClientY - this.height / 2;
@@ -202,13 +208,31 @@ export class Camera implements CameraController {
     this.followHandle = 0;
   }
 
+  /**
+   * Drags the view, with no easing.
+   *
+   * Direct manipulation, so this deliberately moves the CURRENT position as
+   * well as the target. Easing is right for a wheel notch or a programmatic
+   * move, where the camera is going somewhere on its own; it is wrong while a
+   * pointer is held down, because the easing lag means the world slides out
+   * from under your finger and the drag feels like pushing something heavy
+   * through treacle. The content has to stay where you put it.
+   */
   panBy(deltaClientX: number, deltaClientY: number): void {
     const worldPerPixel = (2 * Math.exp(this.targetLogDistance)) / this.height;
 
     if (this.mode === '2d') {
-      this.targetX -= deltaClientX * worldPerPixel;
-      this.targetY += deltaClientY * worldPerPixel;
-    } else {
+      const dx = deltaClientX * worldPerPixel;
+      const dy = deltaClientY * worldPerPixel;
+      this.targetX -= dx;
+      this.targetY += dy;
+      this.x -= dx;
+      this.y += dy;
+      this.followHandle = 0;
+      return;
+    }
+
+    {
       // Pan along the camera's own right and up axes, so dragging moves the
       // scene the way it looks like it should from the current angle.
       const cosAzimuth = Math.cos(this.azimuth);
@@ -226,19 +250,31 @@ export class Camera implements CameraController {
       const sx = -deltaClientX * worldPerPixel;
       const sy = deltaClientY * worldPerPixel;
 
-      this.targetX += rightX * sx + upX * sy;
-      this.targetY += rightY * sx + upY * sy;
-      this.targetZ += upZ * sy;
+      const dx = rightX * sx + upX * sy;
+      const dy = rightY * sx + upY * sy;
+      const dz = upZ * sy;
+
+      this.targetX += dx;
+      this.targetY += dy;
+      this.targetZ += dz;
+      this.x += dx;
+      this.y += dy;
+      this.z += dz;
     }
 
     this.followHandle = 0;
   }
 
+  /** Orbits the camera. Direct manipulation, so no easing. See `panBy`. */
   orbitBy(deltaAzimuth: number, deltaElevation: number): void {
     if (this.mode !== '3d') return;
     this.targetAzimuth += deltaAzimuth;
-    this.targetElevation = clamp(
-      this.targetElevation + deltaElevation,
+    this.azimuth += deltaAzimuth;
+
+    const before = this.targetElevation;
+    this.targetElevation = clamp(before + deltaElevation, -MAX_ELEVATION, MAX_ELEVATION);
+    this.elevation = clamp(
+      this.elevation + (this.targetElevation - before),
       -MAX_ELEVATION,
       MAX_ELEVATION,
     );
@@ -248,11 +284,26 @@ export class Camera implements CameraController {
     this.followHandle = handle;
   }
 
-  /** Points the camera at a followed body. Called before `update` each frame. */
+  /**
+   * Centres the camera on a followed body. Called before `update` each frame.
+   *
+   * Direct, like a drag, and for the same reason: easing toward the body means
+   * trailing behind it. That is invisible at a wide view and total at a close
+   * one. Following Earth zoomed in far enough to see its disc gives a view
+   * about 1e-4 AU across, which Earth crosses in four milliseconds, so an
+   * eased camera is thousands of view-widths behind and the body is simply
+   * never on screen.
+   *
+   * The body's own motion is already smooth, having come through Hermite
+   * interpolation, so tracking it exactly is smooth too.
+   */
   trackFollowed(x: number, y: number, z: number): void {
     this.targetX = x;
     this.targetY = y;
     this.targetZ = z;
+    this.x = x;
+    this.y = y;
+    this.z = z;
   }
 
   /** Advances the easing and rebuilds the matrices. */

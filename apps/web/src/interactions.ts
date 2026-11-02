@@ -69,6 +69,18 @@ export function attachInteractions(
   let spawnPreviewId: string | null = null;
 
   /**
+   * Last pointer position, tracked rather than read from `movementX`.
+   *
+   * `PointerEvent.movementX` is specified loosely enough that it is not
+   * reliable here: with pointer capture it can arrive scaled by the device
+   * pixel ratio, and it is zero on the first move after capture in some
+   * browsers. Differencing positions we have already measured is exact and
+   * behaves the same everywhere.
+   */
+  let lastX = 0;
+  let lastY = 0;
+
+  /**
    * The velocity handle's world-units-per-velocity scale.
    *
    * Owned by the render loop, which has the live velocity and the camera in
@@ -115,6 +127,8 @@ export function attachInteractions(
     if (event.button !== 0) return;
     canvas.setPointerCapture(event.pointerId);
     const [x, y] = pointerOffset(event);
+    lastX = x;
+    lastY = y;
 
     if (event.shiftKey && renderer.camera.mode === '2d') {
       mode = { kind: 'spawn', startX: x, startY: y };
@@ -137,6 +151,10 @@ export function attachInteractions(
 
   function onPointerMove(event: PointerEvent): void {
     const [x, y] = pointerOffset(event);
+    const deltaX = x - lastX;
+    const deltaY = y - lastY;
+    lastX = x;
+    lastY = y;
 
     if (mode.kind === 'press') {
       const moved = Math.hypot(x - mode.startX, y - mode.startY);
@@ -156,17 +174,21 @@ export function attachInteractions(
       } else {
         mode = { kind: renderer.camera.mode === '3d' ? 'orbit' : 'pan' };
       }
+
+      if (mode.kind === 'pan' || mode.kind === 'orbit') {
+        canvas.style.cursor = 'grabbing';
+      }
     }
 
     switch (mode.kind) {
       case 'pan':
-        renderer.camera.panBy(event.movementX, event.movementY);
+        renderer.camera.panBy(deltaX, deltaY);
         break;
 
       case 'orbit':
         // Half a viewport of drag is about a quarter turn, which is enough to
         // feel direct without making the camera twitchy.
-        renderer.camera.orbitBy(-event.movementX * 0.006, event.movementY * 0.006);
+        renderer.camera.orbitBy(-deltaX * 0.006, deltaY * 0.006);
         break;
 
       case 'move': {
@@ -261,6 +283,7 @@ export function attachInteractions(
 
     spawnPreviewId = null;
     mode = { kind: 'none' };
+    canvas.style.cursor = '';
     if (canvas.hasPointerCapture(event.pointerId)) {
       canvas.releasePointerCapture(event.pointerId);
     }

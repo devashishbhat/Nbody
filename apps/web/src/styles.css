@@ -34,7 +34,9 @@ body {
   width: 100%;
   height: 100%;
   touch-action: none;
-  cursor: crosshair;
+  /* Says the view can be dragged. The interaction layer swaps this for
+     `grabbing` while a drag is in progress. */
+  cursor: grab;
 }
 
 .nb-panel {

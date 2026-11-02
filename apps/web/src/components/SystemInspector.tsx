@@ -1,6 +1,7 @@
 import { AUTO_BARNES_HUT_THRESHOLD, type ForceModelId, type IntegratorId } from '@nbody/protocol';
 import { LogSlider, NumberField, Select, Toggle } from '@nbody/ui';
-import { useStore, editSetting, setRenderOption } from '../store.ts';
+import type { CameraMode } from '@nbody/renderer';
+import { useStore, editSetting, setCameraMode, setRenderOption } from '../store.ts';
 
 const INTEGRATORS: { value: IntegratorId; label: string; hint: string }[] = [
   {
@@ -51,6 +52,19 @@ const COLLISIONS = [
   },
 ];
 
+const CAMERA_MODES: { value: CameraMode; label: string; hint: string }[] = [
+  {
+    value: '2d',
+    label: 'Flat',
+    hint: 'Looking straight down. Drag to pan, scroll to zoom where the pointer is.',
+  },
+  {
+    value: '3d',
+    label: 'Orbiting',
+    hint: 'A camera you can swing around the system. Drag to orbit, scroll to zoom. Needed to see clusters and galaxies as the three-dimensional things they are.',
+  },
+];
+
 const RADIUS_MODES = [
   {
     value: 'log' as const,
@@ -75,6 +89,7 @@ const RADIUS_MODES = [
 export function SystemInspector() {
   const scenario = useStore((state) => state.scenario);
   const options = useStore((state) => state.options);
+  const cameraMode = useStore((state) => state.cameraMode);
 
   return (
     <div className="nb-inspector-body">
@@ -136,6 +151,8 @@ export function SystemInspector() {
       />
 
       <h3 className="nb-section-title">View</h3>
+
+      <Select label="Camera" value={cameraMode} options={CAMERA_MODES} onChange={setCameraMode} />
 
       <Select
         label="Body size"

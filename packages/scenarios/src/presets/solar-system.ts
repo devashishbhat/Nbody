@@ -44,7 +44,8 @@ export const solarSystem: Scenario = defineScenario({
   id: 'solar-system',
   name: 'Solar System',
   description: 'The Sun and all eight planets, from JPL Horizons ephemeris data at 1 January 2026.',
-  watchFor: 'Jupiter and Saturn pull the Sun around a barycentre just outside its surface.',
+  watchFor:
+    'Jupiter and Saturn pull the Sun around a barycentre just outside its surface. Scroll out for Uranus and Neptune.',
   units: 'solar',
   dt: 0.1,
   integrator: 'leapfrog',
@@ -54,7 +55,17 @@ export const solarSystem: Scenario = defineScenario({
   suggestedDuration: 365.25 * 12,
   tags: ['solar-system', 'ephemeris', 'real-data'],
   bodies,
-  camera: { mode: '2d', distance: 32 },
+  /**
+   * Framed to Saturn, not to Neptune.
+   *
+   * At a half-height of 32 AU the whole system fits, and it is useless: one AU
+   * is fourteen pixels, so the Sun's drawn disc is wider than Mercury's entire
+   * orbit and the four inner planets are hidden inside it. Framing to 9 AU
+   * puts an AU at about 45 pixels, which separates the terrestrial planets
+   * properly, gives Earth a visible nine-second orbit, and still reaches
+   * Saturn. The outer two are one scroll away, which the description says.
+   */
+  camera: { mode: '2d', distance: 9 },
 });
 
 /**

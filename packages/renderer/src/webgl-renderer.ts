@@ -61,8 +61,19 @@ const TRAIL_SAMPLES = 512;
 /** Floats per trail vertex: x, y, z, sequence. */
 const TRAIL_STRIDE = 4;
 
-/** Floats per body instance: centre, radius, colour, selected. */
-const BODY_STRIDE = 8;
+/** Floats per body instance: centre, radius, colour, selected, emissive. */
+const BODY_STRIDE = 9;
+
+/**
+ * How much heavier the dominant body must be for the system to be lit by it.
+ *
+ * The solar system passes easily: the Sun is a thousand times Jupiter. Jupiter
+ * against its moons passes by twenty thousand. An equal-mass choreography or a
+ * star cluster does not, and those are drawn flat, because a terminator
+ * implies a star that is not there and shading two thousand identical
+ * particles would say something false about them.
+ */
+const STAR_MASS_RATIO = 50;
 
 /** Floats per overlay line vertex: position, rgba. */
 const LINE_STRIDE = 7;
@@ -70,12 +81,19 @@ const LINE_STRIDE = 7;
 /** Points sampled along a predicted orbit. */
 const ORBIT_SAMPLES = 192;
 
-/** Smallest a body may be drawn, so nothing ever becomes invisible. */
-const MIN_BODY_PIXELS = 2.2;
+/**
+ * Smallest a body may be drawn, so nothing ever becomes invisible.
+ *
+ * Raised when bodies started being shaded: a lit sphere seen from the side
+ * shows half its disc, so the same pixel radius reads as roughly half the
+ * brightness it used to. Jupiter's moons were legible as flat dots at 2.6
+ * pixels and nearly vanished once they had a night side.
+ */
+const MIN_BODY_PIXELS = 2.8;
 
 /** Pixel range the log radius mode maps a scenario's radii onto. */
-const LOG_MIN_PIXELS = 2.6;
-const LOG_MAX_PIXELS = 13;
+const LOG_MIN_PIXELS = 3.6;
+const LOG_MAX_PIXELS = 15;
 
 const UNIFORM_PIXELS = 3.2;
 
@@ -149,6 +167,10 @@ export class WebGLRenderer implements Renderer {
 
   private logMinRadius = 0;
   private logRadiusRange = 1;
+
+  /** Scenario index of the body that lights the system, or -1 for none. */
+  private lightIndex = -1;
+  private readonly lightPosition = new Float32Array(3);
 
   private width = 1;
   private height = 1;
@@ -255,6 +277,9 @@ export class WebGLRenderer implements Renderer {
     gl.enableVertexAttribArray(4);
     gl.vertexAttribPointer(4, 1, gl.FLOAT, false, stride, 28);
     gl.vertexAttribDivisor(4, 1);
+    gl.enableVertexAttribArray(5);
+    gl.vertexAttribPointer(5, 1, gl.FLOAT, false, stride, 32);
+    gl.vertexAttribDivisor(5, 1);
 
     gl.bindVertexArray(null);
     return vao;
@@ -337,6 +362,8 @@ export class WebGLRenderer implements Renderer {
     }
     this.logMinRadius = Math.log(minRadius);
     this.logRadiusRange = Math.log(maxRadius) - this.logMinRadius;
+
+    this.lightIndex = findLightSource(this.scenarioMasses, count);
 
     if (this.bodyData.length < count * BODY_STRIDE) {
       this.bodyData = new Float32Array(count * BODY_STRIDE);
@@ -605,6 +632,25 @@ export class WebGLRenderer implements Renderer {
     const originZ = this.camera.originZ;
     const selected = this.renderOptions.selectedHandle;
 
+    // Where the light comes from, in render space. Found per frame because the
+    // star moves: the Sun circles the solar system's barycentre, and in the
+    // Jovian system the light source is Jupiter itself.
+    let lightSlot = -1;
+    if (this.lightIndex >= 0) {
+      for (let i = 0; i < count; i++) {
+        if (this.appearanceIndex(sample.handles[i]!) === this.lightIndex) {
+          lightSlot = i;
+          break;
+        }
+      }
+    }
+    if (lightSlot >= 0) {
+      const l = lightSlot * 3;
+      this.lightPosition[0] = sample.positions[l]! - originX;
+      this.lightPosition[1] = sample.positions[l + 1]! - originY;
+      this.lightPosition[2] = sample.positions[l + 2]! - originZ;
+    }
+
     for (let i = 0; i < count; i++) {
       const d = i * 3;
       const o = i * BODY_STRIDE;
@@ -629,6 +675,7 @@ export class WebGLRenderer implements Renderer {
         data[o + 6] = 0.85;
       }
       data[o + 7] = sample.handles[i] === selected ? 1 : 0;
+      data[o + 8] = i === lightSlot ? 1 : 0;
     }
 
     this.bodyBuffer.upload(data, count * BODY_STRIDE);
@@ -638,8 +685,11 @@ export class WebGLRenderer implements Renderer {
     gl.bindVertexArray(this.bodyVao);
 
     gl.uniformMatrix4fv(program.uniforms['uViewProjection']!, false, this.camera.viewProjection);
+    gl.uniformMatrix4fv(program.uniforms['uView']!, false, this.camera.view);
     gl.uniform2f(program.uniforms['uViewport']!, this.width, this.height);
     gl.uniform1f(program.uniforms['uProj11']!, this.camera.projection[5]!);
+    gl.uniform3fv(program.uniforms['uLightPosition']!, this.lightPosition);
+    gl.uniform1f(program.uniforms['uShading']!, lightSlot >= 0 ? 1 : 0);
     gl.uniform1i(
       program.uniforms['uRadiusMode']!,
       this.renderOptions.radiusMode === 'true'
@@ -1050,6 +1100,35 @@ export class WebGLRenderer implements Renderer {
     this.trails.clear();
     this.lastSample = null;
   }
+}
+
+/**
+ * The body that lights the system, if there is one.
+ *
+ * Returns the index of the most massive body when it dominates everything else
+ * by STAR_MASS_RATIO, and -1 otherwise. A system without a clear primary has
+ * no sensible light direction, and inventing one would draw a terminator
+ * implying a star that does not exist.
+ */
+function findLightSource(masses: Float64Array, count: number): number {
+  let best = -1;
+  let heaviest = 0;
+  let second = 0;
+
+  for (let i = 0; i < count; i++) {
+    const mass = masses[i]!;
+    if (mass > heaviest) {
+      second = heaviest;
+      heaviest = mass;
+      best = i;
+    } else if (mass > second) {
+      second = mass;
+    }
+  }
+
+  if (best < 0 || heaviest <= 0) return -1;
+  if (second > 0 && heaviest / second < STAR_MASS_RATIO) return -1;
+  return best;
 }
 
 export function createWebGLRenderer(options: RendererOptions): Renderer {

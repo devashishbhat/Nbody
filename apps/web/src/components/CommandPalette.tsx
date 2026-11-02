@@ -3,9 +3,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   loadScenario,
   resetScenario,
+  setCameraMode,
   setHelpOpen,
   setPaletteOpen,
   setRenderOption,
+  toggleFollow,
   togglePlay,
   toggleReverse,
   useStore,
@@ -28,6 +30,8 @@ interface Command {
 export function CommandPalette() {
   const open = useStore((state) => state.paletteOpen);
   const options = useStore((state) => state.options);
+  const cameraMode = useStore((state) => state.cameraMode);
+  const hasSelection = useStore((state) => state.selectedHandle !== 0);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -42,6 +46,25 @@ export function CommandPalette() {
 
     const actions: Command[] = [
       { id: 'play', label: 'Play or pause', run: togglePlay },
+      {
+        id: 'camera',
+        label: cameraMode === '2d' ? 'Switch to the orbiting camera' : 'Switch to the flat camera',
+        detail:
+          cameraMode === '2d'
+            ? 'Swing the view around the system in three dimensions'
+            : 'Look straight down at the orbital plane',
+        run: () => setCameraMode(cameraMode === '2d' ? '3d' : '2d'),
+      },
+      ...(hasSelection
+        ? [
+            {
+              id: 'follow',
+              label: 'Follow the selected body',
+              detail: 'Keep it centred as it moves',
+              run: toggleFollow,
+            },
+          ]
+        : []),
       { id: 'reverse', label: 'Reverse time', run: toggleReverse },
       { id: 'reset', label: 'Reset to the start', run: resetScenario },
       {
@@ -73,7 +96,7 @@ export function CommandPalette() {
     ];
 
     return [...presetCommands, ...actions];
-  }, [options]);
+  }, [options, cameraMode, hasSelection]);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();

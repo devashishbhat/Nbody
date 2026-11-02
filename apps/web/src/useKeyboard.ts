@@ -11,17 +11,12 @@ import {
   setPaletteOpen,
   setRenderOption,
   stepOnce,
+  toggleCameraMode,
+  toggleFollow,
   togglePlay,
   undo,
   useStore,
 } from './store.ts';
-
-export interface KeyboardTargets {
-  /** Toggles between the flat and orbiting camera. */
-  toggleDimension: () => void;
-  /** Centres the camera on the selected body, or clears the follow. */
-  toggleFollow: () => void;
-}
 
 /**
  * Keyboard shortcuts.
@@ -30,7 +25,7 @@ export interface KeyboardTargets {
  * pointer is, and suppressed while a text field has focus so that typing a
  * mass does not pause the simulation.
  */
-export function useKeyboard(targets: KeyboardTargets): void {
+export function useKeyboard(): void {
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent): void {
       const target = event.target as HTMLElement | null;
@@ -100,16 +95,16 @@ export function useKeyboard(targets: KeyboardTargets): void {
           break;
 
         default:
-          handleLetters(event, targets);
+          handleLetters(event);
       }
     }
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [targets]);
+  }, []);
 }
 
-function handleLetters(event: KeyboardEvent, targets: KeyboardTargets): void {
+function handleLetters(event: KeyboardEvent): void {
   const state = useStore.getState();
   const key = event.key.toLowerCase();
 
@@ -124,10 +119,10 @@ function handleLetters(event: KeyboardEvent, targets: KeyboardTargets): void {
       resetScenario();
       break;
     case 'f':
-      targets.toggleFollow();
+      toggleFollow();
       break;
     case 'd':
-      targets.toggleDimension();
+      toggleCameraMode();
       break;
     case 'i':
       setInspectorOpen(!state.inspectorOpen);
@@ -157,6 +152,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'R', action: 'Reset to the start' },
   { keys: 'F', action: 'Follow the selected body' },
   { keys: 'D', action: 'Flat or orbiting camera' },
+  { keys: 'Drag empty space', action: 'Pan, or orbit in 3D' },
   { keys: '1 to 9', action: 'Load a preset' },
   { keys: '⌘K or /', action: 'Command palette' },
   { keys: 'I', action: 'Show or hide the inspector' },

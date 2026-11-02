@@ -271,3 +271,27 @@ test.describe('editing preserves the view', () => {
     expect((await cameraState(page)).mode).toBe('2d');
   });
 });
+
+test.describe('camera controls are reachable', () => {
+  test('switches the camera from the inspector', async ({ page }) => {
+    await ready(page);
+    expect(await cameraMode(page)).toBe('2d');
+
+    // The orbiting camera used to be reachable only by pressing D, with no
+    // control anywhere, which made it effectively invisible.
+    await page.selectOption('.nb-inspector select >> nth=3', '3d');
+    await page.waitForTimeout(400);
+
+    expect(await cameraMode(page)).toBe('3d');
+  });
+
+  test('switches the camera from the command palette', async ({ page }) => {
+    await ready(page);
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('.nb-palette-input').fill('orbiting');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(400);
+
+    expect(await cameraMode(page)).toBe('3d');
+  });
+});
