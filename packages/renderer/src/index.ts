@@ -1,12 +1,20 @@
 /**
  * @nbody/renderer
  *
- * LANE C owns this package.
- *
- * The Renderer and CameraController contracts in `types.ts` are fixed in
- * Phase 0; the WebGL2 implementation behind them is Lane C's work. The
- * Canvas2D renderer is provisional scaffolding that keeps the app runnable in
- * the meantime, and is meant to be replaced rather than extended.
+ * Hand-written WebGL2. The draw calls needed are few and specific: instanced
+ * discs, a handful of line strips, one full-screen grid quad and an optional
+ * two-pass bloom. A general scene graph would add bundle weight and per-frame
+ * indirection for none of it.
  */
-export { createCanvas2DRenderer, approach } from './canvas2d.ts';
-export type { CameraController, Renderer, RendererOptions } from './types.ts';
+export { Camera } from './camera.ts';
+export { createWebGLRenderer, WebGLRenderer } from './webgl-renderer.ts';
+export { WebGLUnavailableError, DEFAULT_RENDER_OPTIONS } from './types.ts';
+export type {
+  CameraController,
+  CameraMode,
+  RadiusMode,
+  RenderOptions,
+  Renderer,
+  RendererOptions,
+} from './types.ts';
+export { approach, clamp } from './math.ts';

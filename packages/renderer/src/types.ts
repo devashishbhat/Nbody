@@ -1,69 +1,110 @@
-import type { FrameSample, Scenario } from '@nbody/protocol';
+import type { CameraMode, FrameSample, Scenario } from '@nbody/protocol';
 
-/**
- * Renderer contract.
- *
- * Lane C implements this with WebGL2. It is defined here, in Phase 0, so that
- * the app shell and the UI can be built against it before the real renderer
- * exists, and so that swapping the provisional Canvas2D implementation for the
- * WebGL2 one changes exactly one call site.
- */
-export interface Renderer {
-  /** Called once per animation frame with the interpolated sample. */
-  draw(sample: FrameSample, nowMs: number): void;
+export type { CameraMode };
 
-  /** Called when the scenario changes, to rebuild per-body state. */
-  setScenario(scenario: Scenario): void;
+/** How a body's drawn size relates to its physical radius. */
+export type RadiusMode = 'true' | 'log' | 'uniform';
 
-  /** Device pixel ratio aware. Driven by a ResizeObserver in the shell. */
-  resize(width: number, height: number, devicePixelRatio: number): void;
-
-  camera: CameraController;
-
-  /** Nearest body to a point in CSS pixels, or null. Screen-space, no readback. */
-  pick(clientX: number, clientY: number): number | null;
-
-  dispose(): void;
+export interface RenderOptions {
+  /**
+   * `true` draws physical radii, which at solar-system zoom means everything
+   * is a minimum-size dot, because the solar system really is almost entirely
+   * empty. `log` maps the scenario's radius range onto a legible pixel range
+   * and hands over to true scale once you have zoomed in far enough for the
+   * real disc to be larger. `uniform` draws every body the same size.
+   */
+  radiusMode: RadiusMode;
+  showTrails: boolean;
+  showGrid: boolean;
+  showVelocities: boolean;
+  /** Forward integration of the selected body, drawn as a faint path. */
+  showPredictedOrbit: boolean;
+  bloom: boolean;
+  /** Handle of the selected body, or 0. Highlighted and used by the overlays. */
+  selectedHandle: number;
+  /** Suppresses bloom, trail fading and camera easing. */
+  reducedMotion: boolean;
 }
+
+export const DEFAULT_RENDER_OPTIONS: RenderOptions = {
+  radiusMode: 'log',
+  showTrails: true,
+  showGrid: true,
+  showVelocities: false,
+  showPredictedOrbit: false,
+  bloom: true,
+  selectedHandle: 0,
+  reducedMotion: false,
+};
 
 /**
  * Camera contract.
  *
- * Every value passes through a critically damped spring rather than being
- * applied directly. That is what makes zoom and pan feel continuous instead of
- * stepped, and it is the second half of the smoothness requirement after frame
- * interpolation.
+ * Implemented by `Camera`, which the UI uses directly. Every value passes
+ * through damped easing rather than being applied immediately; see the notes
+ * on that class.
  */
 export interface CameraController {
-  mode: '2d' | '3d';
+  mode: CameraMode;
 
-  /** Target the camera eases toward. Never read back for rendering. */
-  setTarget(x: number, y: number, z: number): void;
-  /** Multiplies the current zoom, anchored at a point in CSS pixels. */
-  zoomBy(factor: number, anchorClientX: number, anchorClientY: number): void;
-  panBy(deltaClientX: number, deltaClientY: number): void;
-  orbitBy(deltaAzimuth: number, deltaElevation: number): void;
-
-  /** Keeps the view centred on a body handle. 0 clears it. */
-  follow(handle: number): void;
-
-  /**
-   * World-space origin the renderer subtracts before narrowing to f32.
-   *
-   * Anchoring on the camera is what keeps precision at solar-system scale: see
-   * writeRelativePositionsF32 in @nbody/protocol.
-   */
+  /** World-space origin the renderer subtracts before narrowing to f32. */
   readonly originX: number;
   readonly originY: number;
   readonly originZ: number;
 
-  /** Advances the springs. Called once per frame before draw. */
-  update(dtSeconds: number): void;
+  /** Orthographic half-height in 2D, orbit radius in 3D. */
+  readonly distance: number;
+  readonly pixelsPerWorld: number;
+  /** Handle being followed, or 0. */
+  readonly following: number;
+
+  setTarget(x: number, y: number, z: number): void;
+  setMode(mode: CameraMode): void;
+  zoomBy(factor: number, anchorClientX?: number, anchorClientY?: number): void;
+  panBy(deltaClientX: number, deltaClientY: number): void;
+  orbitBy(deltaAzimuth: number, deltaElevation: number): void;
+  follow(handle: number): void;
+
+  project(worldX: number, worldY: number, worldZ: number, out: Float64Array): boolean;
+  unproject2d(clientX: number, clientY: number, out: Float64Array): void;
+}
+
+export interface Renderer {
+  readonly camera: CameraController;
+
+  /** Rebuilds per-body state. Call whenever the scenario changes. */
+  setScenario(scenario: Scenario): void;
+
+  /** Draws one frame. Called from requestAnimationFrame. Allocates nothing. */
+  draw(sample: FrameSample, nowMs: number): void;
+
+  resize(width: number, height: number, devicePixelRatio: number): void;
+
+  setOptions(options: Partial<RenderOptions>): void;
+  readonly options: Readonly<RenderOptions>;
+
+  /**
+   * Nearest body to a point in CSS pixels, as a slot index into the last
+   * drawn sample, or null. Screen-space and CPU-side, so there is no GPU
+   * readback stall.
+   */
+  pick(clientX: number, clientY: number): number | null;
+
+  /** World position of a slot in the last drawn sample. */
+  positionOf(slot: number, out: Float64Array): boolean;
+
+  dispose(): void;
 }
 
 export interface RendererOptions {
   canvas: HTMLCanvasElement;
-  /** Body size mapping. See docs/DESIGN.md. */
-  radiusMode?: 'true' | 'log' | 'uniform';
-  background?: string;
+  options?: Partial<RenderOptions>;
+}
+
+/** Thrown when WebGL2 is unavailable, so the shell can say so plainly. */
+export class WebGLUnavailableError extends Error {
+  constructor() {
+    super('WebGL2 is not available in this browser');
+    this.name = 'WebGLUnavailableError';
+  }
 }

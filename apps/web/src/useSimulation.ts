@@ -1,6 +1,6 @@
 import { createEngineClient } from '@nbody/engine';
 import { FrameFlags, H, type EngineClient, type Scenario } from '@nbody/protocol';
-import { createCanvas2DRenderer, type Renderer } from '@nbody/renderer';
+import { createWebGLRenderer, WebGLUnavailableError, type Renderer } from '@nbody/renderer';
 import { formatDrift, formatFps, formatMsPerStep, LiveText } from '@nbody/ui';
 import { useEffect, useMemo, useRef } from 'react';
 
@@ -49,7 +49,22 @@ export function useSimulation(
     if (!canvas) return;
 
     const client = createEngineClient({ publishHz: 60 });
-    const renderer = createCanvas2DRenderer({ canvas });
+
+    let renderer: Renderer;
+    try {
+      renderer = createWebGLRenderer({ canvas });
+    } catch (error) {
+      if (error instanceof WebGLUnavailableError) {
+        // Say so plainly rather than showing a black rectangle. WebGL2 has
+        // been in every major browser since 2017, so this is a hardware or
+        // policy problem rather than something to work around with a second
+        // renderer nobody maintains.
+        readouts.drift.set('no webgl2');
+        client.dispose();
+        return;
+      }
+      throw error;
+    }
     clientRef.current = client;
     rendererRef.current = renderer;
 
@@ -59,6 +74,11 @@ export function useSimulation(
       // rather than in a console nobody opens.
       console[fatal ? 'error' : 'warn'](`[engine] ${message}`);
     });
+
+    // Exposed deliberately. A renderer is hard to inspect from the outside,
+    // and this makes the live engine and renderer reachable from the console
+    // and from tests without a build-time debug flag.
+    (window as unknown as { nbody?: unknown }).nbody = { client, renderer };
 
     const observer = new ResizeObserver(() => {
       const rect = canvas.getBoundingClientRect();

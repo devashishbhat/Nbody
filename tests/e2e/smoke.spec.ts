@@ -35,25 +35,55 @@ test('loads a preset and runs it', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('draws the bodies rather than an empty canvas', async ({ page }) => {
+test('has WebGL2 available', async ({ page }) => {
   await page.goto('/');
-  await page.waitForTimeout(800);
+  const supported = await page.evaluate(
+    () => !!document.createElement('canvas').getContext('webgl2'),
+  );
+  expect(supported).toBe(true);
+});
 
-  // Sample the rendered pixels. A canvas that stayed at the background colour
-  // would mean the renderer never received a frame.
-  const distinctColours = await page.evaluate(() => {
-    const canvas = document.querySelector('canvas.nb-canvas') as HTMLCanvasElement;
-    const context = canvas.getContext('2d');
-    if (!context) return 0;
-    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-    const seen = new Set<number>();
-    for (let i = 0; i < data.length; i += 4) {
-      seen.add((data[i]! << 16) | (data[i + 1]! << 8) | data[i + 2]!);
-    }
-    return seen.size;
-  });
+test('draws moving content rather than a static or empty canvas', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForTimeout(700);
 
-  expect(distinctColours).toBeGreaterThan(3);
+  const canvas = page.locator('canvas.nb-canvas');
+
+  // Comparing screenshot buffers needs no image decoder and tests exactly the
+  // right thing: pixels that change between two moments can only come from a
+  // renderer that is drawing something in motion. An empty canvas, a crashed
+  // context or a frozen loop all produce identical buffers.
+  const first = await canvas.screenshot();
+  await page.waitForTimeout(500);
+  const second = await canvas.screenshot();
+
+  expect(first.equals(second)).toBe(false);
+  // A plausible amount of data for a rendered frame, not a 1x1 placeholder.
+  expect(first.byteLength).toBeGreaterThan(2000);
+});
+
+test('comes to rest when paused', async ({ page }) => {
+  await page.goto('/');
+  await page.waitForTimeout(700);
+
+  const canvas = page.locator('canvas.nb-canvas');
+  await page.getByRole('button', { name: 'Pause' }).click();
+
+  // Pausing does not stop motion instantly, and should not: the playback ring
+  // still holds frames from before the pause at earlier simulation times, so
+  // the interpolated view eases to a halt over a few publish cycles rather
+  // than snapping.
+  //
+  // How long that takes in wall time depends on how many animation frames the
+  // browser gets, which under a parallel test run is not predictable. So this
+  // polls for the property that actually matters, that it does come to rest,
+  // instead of asserting a fixed settling time.
+  await expect(async () => {
+    const first = await canvas.screenshot();
+    await page.waitForTimeout(250);
+    const second = await canvas.screenshot();
+    expect(first.equals(second)).toBe(true);
+  }).toPass({ timeout: 10_000 });
 });
 
 test('keeps energy drift negligible on the figure-eight', async ({ page }) => {
