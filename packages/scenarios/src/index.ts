@@ -16,6 +16,7 @@ export {
   type ShareTarget,
 } from './codec.ts';
 export { DEFAULT_PRESET_ID, defaultPreset, getPreset, presets, presetsById } from './registry.ts';
+export { accretionDisk } from './presets/accretion.ts';
 export { circularBinary, BINARY_PERIOD } from './presets/binary.ts';
 export { figureEight, FIGURE_EIGHT_PERIOD } from './presets/figure-eight.ts';
 export { pythagorean } from './presets/pythagorean.ts';

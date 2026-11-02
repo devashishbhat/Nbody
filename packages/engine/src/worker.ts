@@ -243,6 +243,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>) => {
       case 'setCollisions':
         engine.applySettings({ collisions: message.collisions });
         break;
+      case 'setRestitution':
+        engine.applySettings({ restitution: message.restitution });
+        break;
       case 'setSoftening':
         engine.applySettings({ softening: message.softening });
         break;

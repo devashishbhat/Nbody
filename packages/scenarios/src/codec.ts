@@ -87,6 +87,7 @@ interface CompactScenario {
   f: Scenario['forceModel'];
   th: number;
   c: Scenario['collisions'];
+  r: number;
   ts: number;
   sd?: number;
   t: string[];
@@ -118,6 +119,7 @@ function toCompact(scenario: Scenario): CompactScenario {
     f: scenario.forceModel,
     th: scenario.theta,
     c: scenario.collisions,
+    r: scenario.restitution,
     ts: scenario.timeScale,
     t: scenario.tags,
     b: scenario.bodies.map((body): CompactBody => {
@@ -187,6 +189,9 @@ function rebuild(compact: CompactScenario): Scenario {
     forceModel: compact.f,
     theta: compact.th,
     collisions: compact.c,
+    // Absent in links written before restitution existed, so it falls back to
+    // the default rather than decoding as undefined and failing validation.
+    restitution: compact.r ?? 0.3,
     timeScale: compact.ts,
     tags: compact.t,
     bodies,

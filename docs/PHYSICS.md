@@ -159,10 +159,61 @@ reads values in that system.
 
 ## Collisions
 
-Optional merge-on-contact, conserving mass, momentum and volume
-(`r_merged = (r_i³ + r_j³)^(1/3)`). The **heavier** body keeps its identity
+Four modes. Which outcome is physically right is decided by one number: the
+closing speed along the line of centres, against the mutual escape velocity
+
+```
+v_esc = sqrt( 2 G (m1 + m2) / (r1 + r2) )
+```
+
+Below it the pair cannot separate again whatever it does, so it accretes. This
+is not a simplification: it is how planets were built. Above it the bodies
+arrive with more than enough energy to leave, so they scatter.
+
+| Mode        | Behaviour                                              |
+| ----------- | ------------------------------------------------------ |
+| `none`      | Pass through. The default.                              |
+| `realistic` | Applies the escape-velocity test above.                 |
+| `merge`     | Always accrete.                                         |
+| `bounce`    | Always rebound.                                         |
+
+**Merging** conserves mass, momentum and volume
+(`r_merged = (r_i³ + r_j³)^(1/3)`). The heavier body keeps its identity
 including its handle, so a trail being drawn for the dominant object continues
 through the merge rather than jumping.
+
+**Bouncing** applies an impulse along the line of centres, split by inverse
+mass, so momentum is conserved exactly however unequal the pair. `restitution`
+sets the fraction of closing speed that survives; 1 conserves kinetic energy
+exactly, and real rock on rock is around 0.1 to 0.4. A pinned body and a
+massless one both reduce to the same case, zero inverse mass: one side does not
+respond and the other takes the whole velocity change, so a pinned planet does
+not recoil from a dust grain. The pair is separated by a hair after the
+impulse, or the same overlap is detected next step and it buzzes instead of
+bouncing.
+
+### What this does not model
+
+A fast impact between real bodies shatters them. Fragmentation needs a strength
+model, a debris size distribution and a way to create bodies mid-step, nearly
+all of which would be invented rather than derived, so a super-escape impact
+here scatters the bodies intact.
+
+### Tunnelling
+
+Contact is found by overlap, so a pair that crosses the whole contact distance
+inside one step passes through undetected. The step needed to avoid that is
+roughly the contact radius over the closing speed. The adaptive integrator does
+not help, since it watches the smoothness of the gravitational field rather
+than the geometry.
+
+### Energy drift with collisions on
+
+Merging is inelastic and so is any bounce below perfect restitution, so both
+genuinely remove energy. The drift baseline is therefore reset whenever a
+collision resolves, and the readout means the integration error since the
+system last changed. Without that it climbs to 1e-2 on a preset working
+exactly as intended.
 
 ## Verified results
 

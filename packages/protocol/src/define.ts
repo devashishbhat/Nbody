@@ -1,5 +1,6 @@
 import { parseScenario } from './schema.ts';
 import {
+  DEFAULT_RESTITUTION,
   DEFAULT_THETA,
   type Body,
   type CameraState,
@@ -50,6 +51,7 @@ export interface ScenarioInput {
   forceModel?: ForceModelId;
   theta?: number;
   collisions?: CollisionMode;
+  restitution?: number;
   timeScale: number;
   suggestedDuration?: number;
   bodies: readonly BodyInput[];
@@ -168,6 +170,7 @@ export function defineScenario(input: ScenarioInput): Scenario {
     forceModel: input.forceModel ?? 'auto',
     theta: input.theta ?? DEFAULT_THETA,
     collisions: input.collisions ?? 'none',
+    restitution: input.restitution ?? DEFAULT_RESTITUTION,
     timeScale: input.timeScale,
     bodies,
     camera,

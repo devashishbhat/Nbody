@@ -1,6 +1,7 @@
 import { ReferenceEngine } from '@nbody/engine';
 import { type Scenario } from '@nbody/protocol';
 import {
+  accretionDisk,
   innerSolarSystem,
   lagrangeTriangle,
   presets,
@@ -329,5 +330,67 @@ describe('periodic orbits close', () => {
     // And it really does librate rather than sitting still, which is what
     // makes the bound above meaningful rather than vacuous.
     expect(widest).toBeGreaterThan(5);
+  });
+});
+
+describe('accretion', () => {
+  /**
+   * The accretion preset has to actually accrete.
+   *
+   * Three numbers decide whether it does anything at all, and they work
+   * against each other: the body radius sets how often bodies meet, the mass
+   * sets the escape velocity, and the velocity dispersion has to sit below
+   * that escape velocity or every encounter scatters instead of sticking. Get
+   * any of them wrong and the preset is a ring that does nothing, which looks
+   * identical to a ring that is working slowly.
+   */
+  it('merges planetesimals into fewer, larger bodies', { timeout: 60_000 }, () => {
+    const engine = new ReferenceEngine();
+    engine.load(accretionDisk);
+
+    const startCount = engine.state.count;
+    const startMass = engine.state.totalMass();
+    const startLargest = largestPlanetesimal(engine);
+
+    // About twelve orbits at the middle of the disc.
+    const steps = Math.round(120 / accretionDisk.dt);
+    for (let i = 0; i < steps; i++) engine.step();
+
+    expect(engine.state.count).toBeLessThan(startCount);
+    // Mass is conserved through every merge, so the total cannot move.
+    expect(engine.state.totalMass()).toBeCloseTo(startMass, 10);
+    // And the survivors are genuinely bigger, rather than the count falling
+    // because bodies were lost.
+    expect(largestPlanetesimal(engine)).toBeGreaterThan(startLargest);
+    expect(engine.diverged).toBe(false);
+  });
+
+  /** Heaviest body that is not the star. */
+  function largestPlanetesimal(engine: ReferenceEngine): number {
+    let heaviest = 0;
+    let star = 0;
+    for (let i = 0; i < engine.state.count; i++) {
+      star = Math.max(star, engine.state.mass[i]);
+    }
+    for (let i = 0; i < engine.state.count; i++) {
+      const mass = engine.state.mass[i];
+      if (mass < star && mass > heaviest) heaviest = mass;
+    }
+    return heaviest;
+  }
+
+  it('conserves momentum through a bouncing run', () => {
+    // Bouncing applies an impulse along the line of centres split by inverse
+    // mass, so it must not shift the centre of mass however many impacts
+    // happen.
+    const engine = new ReferenceEngine();
+    engine.load({ ...accretionDisk, collisions: 'bounce', restitution: 0.6 });
+    const before = engine.measure().momentum;
+
+    for (let i = 0; i < 20_000; i++) engine.step();
+
+    // No merges, so nothing left the system.
+    expect(engine.state.count).toBe(accretionDisk.bodies.length);
+    expect(engine.measure().momentum).toBeCloseTo(before, 6);
   });
 });

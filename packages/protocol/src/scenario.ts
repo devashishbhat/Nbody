@@ -31,7 +31,26 @@ export type IntegratorId = 'leapfrog' | 'yoshida4' | 'dopri5';
  */
 export type ForceModelId = 'direct' | 'barnes-hut' | 'auto';
 
-export type CollisionMode = 'none' | 'merge';
+/**
+ * What happens when two bodies touch.
+ *
+ * `none` lets them pass through each other, which is the right default: at
+ * astronomical scale bodies almost never actually hit, and the geometry is
+ * usually there to be looked at rather than enforced.
+ *
+ * `merge` always combines them, conserving mass, momentum and volume. This is
+ * not a simplification: it is what really happens when two bodies meet slowly
+ * enough, and it is how planets were built.
+ *
+ * `bounce` always rebounds them as hard spheres, with `restitution` setting
+ * how much speed survives the impact.
+ *
+ * `realistic` chooses between the two by the criterion that actually decides
+ * it in nature: whether the bodies are closing faster than their mutual
+ * escape velocity. Below it, gravity wins and they accrete. Above it, they
+ * have more than enough energy to separate again, so they scatter.
+ */
+export type CollisionMode = 'none' | 'merge' | 'bounce' | 'realistic';
 
 export type CameraMode = '2d' | '3d';
 
@@ -100,6 +119,15 @@ export interface Scenario {
   /** Barnes-Hut opening angle. Smaller is more accurate and slower. */
   theta: number;
   collisions: CollisionMode;
+  /**
+   * Coefficient of restitution, 0 to 1. Used by `bounce` and `realistic`.
+   *
+   * The fraction of the closing speed that survives a rebound. 1 is perfectly
+   * elastic and conserves kinetic energy; 0 means the bodies stop dead
+   * relative to each other without combining. Real rock on rock is around
+   * 0.1 to 0.4, which is why the default is low.
+   */
+  restitution: number;
 
   /** Sim time units advanced per real second at 1x speed. */
   timeScale: number;
@@ -116,10 +144,21 @@ export type BodyPatch = Partial<Omit<Body, 'id'>>;
 /** Fields that can be changed live without reloading the scenario. */
 export type ScenarioSettings = Pick<
   Scenario,
-  'G' | 'softening' | 'integrator' | 'dt' | 'forceModel' | 'theta' | 'collisions' | 'timeScale'
+  | 'G'
+  | 'softening'
+  | 'integrator'
+  | 'dt'
+  | 'forceModel'
+  | 'theta'
+  | 'collisions'
+  | 'restitution'
+  | 'timeScale'
 >;
 
 export const DEFAULT_THETA = 0.5;
+
+/** Rock on rock, roughly. Deliberately well below elastic. */
+export const DEFAULT_RESTITUTION = 0.3;
 
 /**
  * Resolves `auto` against a body count. Kept here rather than in the engine so

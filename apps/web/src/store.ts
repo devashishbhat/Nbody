@@ -482,6 +482,7 @@ const SETTING_SENDERS: {
   forceModel: (engine, value) => engine.setForceModel(value),
   theta: (engine, value) => engine.setTheta(value),
   collisions: (engine, value) => engine.setCollisions(value),
+  restitution: (engine, value) => engine.setRestitution(value),
   timeScale: (engine, value) => engine.setTimeScale(value),
 };
 

@@ -3,6 +3,7 @@ import { circularBinary } from './presets/binary.ts';
 import { figureEight } from './presets/figure-eight.ts';
 import { pythagorean } from './presets/pythagorean.ts';
 import { innerSolarSystem, solarSystem } from './presets/solar-system.ts';
+import { accretionDisk } from './presets/accretion.ts';
 import { CLUSTER_PRESETS } from './presets/clusters.ts';
 import { GALAXY_PRESETS } from './presets/galaxies.ts';
 import { LAGRANGE_PRESETS } from './presets/lagrange-points.ts';
@@ -33,6 +34,7 @@ export const presets: readonly Scenario[] = [
   pythagorean,
   circularBinary,
   ...LAGRANGE_PRESETS,
+  accretionDisk,
   ...CLUSTER_PRESETS,
   ...GALAXY_PRESETS,
 ];

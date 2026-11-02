@@ -57,7 +57,10 @@ export const ScenarioSchema = z
     dt: finite.refine((v) => v !== 0, { message: 'dt must not be 0' }),
     forceModel: z.enum(['direct', 'barnes-hut', 'auto']),
     theta: finite.refine((v) => v > 0 && v <= 2, { message: 'theta must be in (0, 2]' }),
-    collisions: z.enum(['none', 'merge']),
+    collisions: z.enum(['none', 'merge', 'bounce', 'realistic']),
+    restitution: finite.refine((v) => v >= 0 && v <= 1, {
+      message: 'restitution must be in [0, 1]',
+    }),
 
     timeScale: finite.refine((v) => v > 0, { message: 'timeScale must be > 0' }),
     suggestedDuration: finite.optional(),

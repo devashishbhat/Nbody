@@ -1,5 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { cameraDistance, cameraMode, clock, massOf, ready, snapshot } from './helpers.ts';
+import {
+  cameraDistance,
+  cameraMode,
+  clock,
+  diagnostic,
+  massOf,
+  ready,
+  snapshot,
+} from './helpers.ts';
 
 /**
  * The interactive half of the product.
@@ -288,7 +296,9 @@ test.describe('camera controls are reachable', () => {
   test('switches the camera from the command palette', async ({ page }) => {
     await ready(page);
     await page.keyboard.press('ControlOrMeta+k');
-    await page.locator('.nb-palette-input').fill('orbiting');
+    // Specific enough to beat the accretion preset, whose description reads
+    // "planetesimals orbiting a star".
+    await page.locator('.nb-palette-input').fill('orbiting camera');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(400);
 
@@ -459,5 +469,52 @@ test.describe('reset', () => {
     // was and has not been thrown back to the preset's framing of 9 AU.
     const after = await page.evaluate(() => window.nbody!.renderer.camera.distance);
     expect(Math.abs(after - zoomed) / zoomed).toBeLessThan(1e-3);
+  });
+});
+
+test.describe('collisions', () => {
+  test('offers every mode and reveals bounciness for the ones that need it', async ({ page }) => {
+    await ready(page);
+
+    const collisions = page.locator('.nb-inspector select').nth(2);
+    await expect(collisions).toHaveValue('none');
+
+    const options = await collisions
+      .locator('option')
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    expect(options).toEqual(['none', 'realistic', 'merge', 'bounce']);
+
+    // Bounciness only means something where there is a rebound to scale.
+    const bounciness = page.locator('.nb-field', { hasText: 'Bounciness' });
+    await expect(bounciness).toBeHidden();
+
+    await collisions.selectOption('realistic');
+    await expect(bounciness).toBeVisible();
+    expect((await snapshot(page)).collisions).toBe('realistic');
+
+    await collisions.selectOption('merge');
+    await expect(bounciness).toBeHidden();
+  });
+
+  test('accretes planetesimals into fewer, larger bodies', async ({ page }) => {
+    await ready(page);
+    await page.keyboard.press('ControlOrMeta+k');
+    await page.locator('.nb-palette-input').fill('Planet Formation');
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(1200);
+
+    const bodies = diagnostic(page, 'Bodies');
+    const before = Number.parseInt((await bodies.textContent()) ?? '0', 10);
+    expect(before).toBeGreaterThan(100);
+
+    await page.waitForTimeout(6000);
+
+    const after = Number.parseInt((await bodies.textContent()) ?? '0', 10);
+    expect(after).toBeLessThan(before);
+
+    // Mass is conserved through every merge, so the survivors are bigger
+    // rather than bodies having been lost.
+    const total = (await snapshot(page)).bodies.reduce((sum, b) => sum + b.mass, 0);
+    expect(total).toBeCloseTo(1 + 300 * 3e-4, 6);
   });
 });

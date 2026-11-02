@@ -132,6 +132,7 @@ export function createEngineClient(options: EngineClientOptions = {}): EngineCli
     setTheta: (theta: number) => send({ type: 'setTheta', theta }),
     setForceModel: (forceModel: ForceModelId) => send({ type: 'setForceModel', forceModel }),
     setCollisions: (collisions: CollisionMode) => send({ type: 'setCollisions', collisions }),
+    setRestitution: (restitution: number) => send({ type: 'setRestitution', restitution }),
     setSoftening: (softening: number) => send({ type: 'setSoftening', softening }),
     setG: (G: number) => send({ type: 'setG', G }),
 

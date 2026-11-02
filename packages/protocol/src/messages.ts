@@ -33,6 +33,7 @@ export type MainToWorker =
   | { type: 'setTheta'; theta: number }
   | { type: 'setForceModel'; forceModel: ForceModelId }
   | { type: 'setCollisions'; collisions: CollisionMode }
+  | { type: 'setRestitution'; restitution: number }
   | { type: 'setSoftening'; softening: number }
   | { type: 'setG'; G: number }
   | { type: 'patchBody'; id: string; patch: BodyPatch }

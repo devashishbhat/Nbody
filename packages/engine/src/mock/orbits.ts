@@ -160,6 +160,7 @@ export function createMockEngineClient(options: MockEngineOptions = {}): EngineC
     setTheta: noop,
     setForceModel: noop,
     setCollisions: noop,
+    setRestitution: noop,
     setSoftening: noop,
     setG: noop,
     patchBody: noop,

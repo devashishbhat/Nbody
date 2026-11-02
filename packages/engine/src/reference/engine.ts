@@ -1,5 +1,6 @@
 import {
   BODY_STRIDE,
+  DEFAULT_RESTITUTION,
   FrameFlags,
   H,
   resolveForceModel,
@@ -10,7 +11,7 @@ import {
   type ScenarioSettings,
 } from '@nbody/protocol';
 import { BarnesHutTree } from './barnes-hut.ts';
-import { resolveMerges } from './collisions.ts';
+import { resolveCollisions } from './collisions.ts';
 import { computeDiagnostics, emptyDiagnostics, type Diagnostics } from './diagnostics.ts';
 import { Dopri5 } from './dopri5.ts';
 import { computeAccelerations, type ForceField } from './forces.ts';
@@ -41,6 +42,7 @@ export class ReferenceEngine implements ForceField {
     forceModel: 'auto',
     theta: 0.5,
     collisions: 'none',
+    restitution: DEFAULT_RESTITUTION,
     timeScale: 1,
   };
 
@@ -95,6 +97,7 @@ export class ReferenceEngine implements ForceField {
       forceModel: scenario.forceModel,
       theta: scenario.theta,
       collisions: scenario.collisions,
+      restitution: scenario.restitution,
       timeScale: scenario.timeScale,
     };
     this.state.loadFrom(scenario);
@@ -159,10 +162,35 @@ export class ReferenceEngine implements ForceField {
     this.simTime += advanced;
     this.stepCount++;
 
-    if (collisions === 'merge' && resolveMerges(this.state) > 0) {
-      this.pendingFlags |= FrameFlags.Collided | FrameFlags.TopologyChanged;
-      this.refreshForces();
-      this.adaptive.restart();
+    if (collisions !== 'none') {
+      const { merges, bounces } = resolveCollisions(
+        this.state,
+        collisions,
+        this.settings.G,
+        this.settings.restitution,
+      );
+      if (merges > 0 || bounces > 0) {
+        this.pendingFlags |= FrameFlags.Collided;
+        // Only a merge changes the set of bodies. A bounce leaves every handle
+        // in place, so flagging a topology change for it would clear the
+        // trails on every impact.
+        if (merges > 0) this.pendingFlags |= FrameFlags.TopologyChanged;
+        // Both change positions or velocities discontinuously, which breaks
+        // the integrators' entry invariant and invalidates any step size the
+        // adaptive controller had measured.
+        this.refreshForces();
+        this.adaptive.restart();
+
+        // Re-baseline the energy drift readout. A merge is inelastic and a
+        // bounce below perfect restitution is too, so both genuinely remove
+        // energy from the system: that is physics, not integration error, and
+        // leaving it in the drift figure would have the accuracy readout climb
+        // to 1e-2 on a preset that is working exactly as intended. The same
+        // reasoning already applies when G or the softening changes. What the
+        // readout means is the integration error since the system last
+        // changed, which is the question it is there to answer.
+        this.energy0 = this.measure().energy;
+      }
     }
 
     return advanced;
@@ -256,6 +284,7 @@ export class ReferenceEngine implements ForceField {
     scenario.forceModel = this.settings.forceModel;
     scenario.theta = this.settings.theta;
     scenario.collisions = this.settings.collisions;
+    scenario.restitution = this.settings.restitution;
     scenario.timeScale = this.settings.timeScale;
     return scenario;
   }

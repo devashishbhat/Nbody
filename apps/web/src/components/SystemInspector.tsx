@@ -43,12 +43,22 @@ const COLLISIONS = [
   {
     value: 'none' as const,
     label: 'Pass through',
-    hint: 'Bodies ignore each other geometrically.',
+    hint: 'Bodies ignore each other geometrically. At astronomical scale they almost never actually meet.',
+  },
+  {
+    value: 'realistic' as const,
+    label: 'Realistic',
+    hint: 'Bodies closing slower than their mutual escape velocity accrete, because gravity will not let them separate again. Faster ones arrive with enough energy to leave, so they scatter.',
   },
   {
     value: 'merge' as const,
-    label: 'Merge on contact',
-    hint: 'Overlapping bodies combine, conserving mass, momentum and volume.',
+    label: 'Always merge',
+    hint: 'Overlapping bodies combine, conserving mass, momentum and volume. This is how planets were built.',
+  },
+  {
+    value: 'bounce' as const,
+    label: 'Always bounce',
+    hint: 'Rebound as hard spheres however fast they were going, with bounciness setting how much speed survives.',
   },
 ];
 
@@ -149,6 +159,17 @@ export function SystemInspector() {
         options={COLLISIONS}
         onChange={(value) => editSetting('collisions', value)}
       />
+
+      {scenario.collisions === 'bounce' || scenario.collisions === 'realistic' ? (
+        <LogSlider
+          label="Bounciness"
+          value={Math.max(scenario.restitution, 0.01)}
+          min={0.01}
+          max={1}
+          format={(value) => value.toFixed(2)}
+          onChange={(value) => editSetting('restitution', Math.min(1, value), 'drag')}
+        />
+      ) : null}
 
       <h3 className="nb-section-title">View</h3>
 

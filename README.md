@@ -16,6 +16,12 @@ Nine periodic solutions to the three-body problem, including Lagrange's
 equilateral triangle and the figure-eight above. Star clusters, a cold
 collapse, Jupiter's Trojan asteroids, and a galaxy flyby of 2,602 bodies.
 
+**Let them crash into each other.** Collisions can be resolved the way nature
+decides it: a pair closing slower than its mutual escape velocity cannot
+separate again, so it accretes, and a faster one scatters. The Planet Formation
+preset starts with three hundred planetesimals and leaves you with a handful of
+protoplanets.
+
 **Change the physics while it runs.** Nothing restarts. Drag a planet to a new
 orbit, grab the tip of its velocity arrow and aim it somewhere else, or hold shift and drag empty space to sling a new body into the system. Set gravity itself to
 something it has never been. Make Jupiter a thousand times heavier and watch

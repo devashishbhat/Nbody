@@ -32,6 +32,7 @@ export interface EngineClient {
   setTheta(theta: number): void;
   setForceModel(forceModel: ForceModelId): void;
   setCollisions(collisions: CollisionMode): void;
+  setRestitution(restitution: number): void;
   setSoftening(softening: number): void;
   setG(G: number): void;
 
